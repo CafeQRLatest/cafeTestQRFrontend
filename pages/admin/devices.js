@@ -4,8 +4,9 @@ import DashboardLayout from '../../components/DashboardLayout';
 import RoleGate from '../../components/RoleGate';
 import NiceSelect from '../../components/NiceSelect';
 import api from '../../utils/api';
+import { 
   FaPowerOff, FaSave, FaTag, FaMicrochip, FaSearch, FaPlus, FaChevronRight,
-  FaPrint, FaBarcode, FaTabletAlt, FaLaptop
+  FaPrint, FaBarcode, FaTabletAlt, FaLaptop, FaTools
 } from 'react-icons/fa';
 
 /**
