@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import DashboardLayout from '../../components/DashboardLayout';
-import { FaBuilding, FaMicrochip, FaUsers, FaArrowRight, FaTools, FaShieldAlt } from 'react-icons/fa';
+import { FaBuilding, FaMicrochip, FaUsers, FaArrowRight, FaTools, FaShieldAlt, FaMoneyBillWave, FaTags, FaWarehouse } from 'react-icons/fa';
 import api from '../../utils/api';
 
 export default function OrganizationPage() {
@@ -46,6 +46,27 @@ function OrganizationContent() {
       description: 'User Access Control & Role Management', 
       icon: <FaUsers />, 
       color: "#10b981" 
+    },
+    { 
+      name: 'Warehouse Management', 
+      url: '/admin/warehouses', 
+      description: 'Manage Storage Locations & Distribution Centers', 
+      icon: <FaWarehouse />, 
+      color: "#06b6d4" 
+    },
+    { 
+      name: 'Currency Masters', 
+      url: '/owner/currencies', 
+      description: 'Multi-Currency Setup & Exchange Rates', 
+      icon: <FaMoneyBillWave />, 
+      color: "#14b8a6" 
+    },
+    { 
+      name: 'Price List Masters', 
+      url: '/owner/pricelists', 
+      description: 'Sales & Purchase Pricing with Versioning', 
+      icon: <FaTags />, 
+      color: "#f97316" 
     }
   ];
 

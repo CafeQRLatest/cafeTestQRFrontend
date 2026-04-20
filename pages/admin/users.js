@@ -33,6 +33,7 @@ function UsersContent() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState(null);
   const [menus, setMenus] = useState([]);
+  const [config, setConfig] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
@@ -43,13 +44,18 @@ function UsersContent() {
 
   const fetchData = async (currentSelection = null) => {
     try {
-      const [uResp, rResp, oResp, tResp, pResp] = await Promise.all([
+      const [uResp, rResp, oResp, tResp, pResp, cResp] = await Promise.all([
         api.get('/api/v1/users'),
         api.get('/api/v1/roles'),
         api.get('/api/v1/organizations'),
         api.get('/api/v1/terminals'),
-        api.get('/api/v1/roles/menus')
+        api.get('/api/v1/roles/menus'),
+        api.get('/api/v1/configurations')
       ]);
+      
+      if (cResp?.data?.success) {
+        setConfig(cResp.data.data);
+      }
       
       if (uResp.data.success) {
         setUsers(uResp.data.data || []);
@@ -72,6 +78,9 @@ function UsersContent() {
           .filter(m => !m.parentId) // Only show Parent menus in the Role Mapping UI
           .forEach(m => {
             if (!seenNames.has(m.name)) {
+              // Filter out Table Management if disabled
+              if (m.name === "Table Management" && cResp?.data?.data?.tableManagementEnabled === false) return;
+              
               seenNames.add(m.name);
               uniqueMenus.push(m);
             }

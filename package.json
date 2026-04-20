@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@capacitor/core": "^8.3.0",
     "axios": "^1.13.6",
     "js-cookie": "^3.0.5",
     "jwt-decode": "^4.0.0",

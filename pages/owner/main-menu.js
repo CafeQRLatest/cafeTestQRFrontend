@@ -5,13 +5,13 @@ import SubscriptionGate from '../../components/SubscriptionGate';
 import DashboardLayout from '../../components/DashboardLayout';
 import api from '../../utils/api';
 import { 
-  FaChartLine, 
-  FaBookOpen, 
-  FaCashRegister, 
-  FaFileInvoice, 
+  FaCamera, FaReceipt, FaTags, FaFilter, FaUsers, FaCog, FaChartLine, FaCreditCard, FaUserFriends, FaShoppingCart, FaChair, FaChartBar,
   FaArrowRight,
   FaBuilding,
-  FaCreditCard
+  FaBoxes,
+  FaBookOpen,
+  FaCashRegister,
+  FaFileInvoice
 } from 'react-icons/fa';
 
 export default function MainMenuPage() {
@@ -52,13 +52,15 @@ function MainMenuContent() {
     "Subscription":     { icon: <FaCreditCard />,   color: "#f59e0b" },
     "Dashboard":        { icon: <FaChartLine />,    color: "#f97316" },
     "Product Management":  { icon: <FaBookOpen />,     color: "#3b82f6" },
-    "Point of Sale":    { icon: <FaCashRegister />, color: "#10b981" },
+    "Sales":            { icon: <FaChartBar />,     color: "#10b981" },
     "Billing & Reports":{ icon: <FaFileInvoice />,  color: "#8b5cf6" },
     "Reports & Billing":{ icon: <FaFileInvoice />,  color: "#8b5cf6" },
+    "Stock":            { icon: <FaBoxes />,       color: "#ea580c" },
+    "Table Management": { icon: <FaChair />,       color: "#f97316" },
   };
 
-  // Only show PARENT menus (no parent_id / parentId)
-  const parentMenus = assignedMenus.filter(m => !m.parentId && !m.parent_id);
+  // Only show PARENT menus and Filter out Point of Sale
+  const parentMenus = assignedMenus.filter(m => (!m.parentId && !m.parent_id) && m.name !== "Point of Sale");
 
   // Map parent menus to display items
   const filteredItems = parentMenus.map(m => ({

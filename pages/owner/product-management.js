@@ -261,7 +261,7 @@ function ProductManagementContent() {
   const startNewProduct = () => {
     setSelectedProduct({
       name: '', description: '', price: 0, isAvailable: true, imageUrl: '',
-      productType: 'VEG', isVariant: false, isPackagedGood: false, productCode: '',
+      productType: 'VEG', isVariant: false, isPackagedGood: false, isIngredient: false, productCode: '',
       taxRate: 0, taxCode: '', mrp: 0, costPrice: 0, barcode: '', minStockLevel: 0,
       kdsStation: '', uom: null, category: categories[0] || null, isActive: true,
       variantMappings: [], variantPricings: [], upsells: []
@@ -348,7 +348,7 @@ function ProductManagementContent() {
                         <th style={{ width: '40px' }}>
                            <input type="checkbox" checked={selectedItemIds.length === filteredProducts.length && filteredProducts.length > 0} onChange={() => toggleSelectAll(filteredProducts.map(p => p.id))} />
                         </th>
-                        <th>Image</th><th>Code</th><th>Name</th><th>Category</th><th>Price</th><th>Type</th><th>Status</th><th className="text-right">Actions</th>
+                        <th>Image</th><th>Code</th><th>Name</th><th>Category</th><th>Price</th><th>Type</th><th>Ingredient</th><th>Status</th><th className="text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -367,6 +367,13 @@ function ProductManagementContent() {
                           <td>{p.category?.name || 'N/A'}</td>
                           <td>₹{p.price} <small>/ {p.uom?.shortName || 'Unit'}</small></td>
                           <td><span className={`type-badge ${p.productType?.toLowerCase().replace('_', '-')}`}>{p.productType || 'N/A'}</span></td>
+                          <td className="text-center">
+                              {p.isIngredient ? (
+                                <div className="type-badge" style={{ backgroundColor: '#fdf2f8', color: '#db2777', border: '1px solid #fbcfe8', borderRadius: '6px', fontSize: '10px' }}>
+                                   <FaUtensilSpoon style={{ marginRight: '4px' }}/> INGREDIENT
+                                </div>
+                              ) : '-'}
+                           </td>
                           <td>
                              <span className={`status-pill ${p.isActive ? 'active' : 'inactive'}`} onClick={(e) => { e.stopPropagation(); handleToggleActive(p); }}>
                                 <span className="status-dot"></span>
@@ -459,7 +466,7 @@ function ProductManagementContent() {
                   </div>
                   <div className="card-img" style={{ backgroundImage: `url(${p.imageUrl || 'https://via.placeholder.com/40'})` }}></div>
                   <div className="card-info">
-                     <span className="card-name">{p.name}</span>
+                     <span className="card-name">{p.name} {p.isIngredient && <FaUtensilSpoon style={{ color: '#db2777', fontSize: '10px', marginLeft: '4px' }}/>}</span>
                      <span className="card-sub">{p.category?.name || 'No Category'} • ₹{p.price}</span>
                   </div>
                   <div className="card-action" onClick={e => { e.stopPropagation(); /* could add a small menu here */ }}>
@@ -604,6 +611,12 @@ function ProductManagementContent() {
                     <div className="control-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                        <label style={{ margin: 0 }}>Availability</label>
                        <div className={`erp-switch ${selectedProduct.isActive ? 'active' : ''}`} onClick={() => !viewOnly && setSelectedProduct({...selectedProduct, isActive: !selectedProduct.isActive})}>
+                         <div className="switch-knob"></div>
+                       </div>
+                    </div>
+                    <div className="control-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                       <label style={{ margin: 0 }}>Is Ingredient</label>
+                       <div className={`erp-switch ${selectedProduct.isIngredient ? 'active' : ''}`} onClick={() => !viewOnly && setSelectedProduct({...selectedProduct, isIngredient: !selectedProduct.isIngredient})}>
                          <div className="switch-knob"></div>
                        </div>
                     </div>
