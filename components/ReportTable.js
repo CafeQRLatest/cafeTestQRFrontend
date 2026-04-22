@@ -2,16 +2,7 @@ import React from 'react';
 import { FaInbox } from 'react-icons/fa';
 
 /**
- * ReportTable — A shared, professional data-table component for report pages.
- * 
- * Props:
- *   columns    — Array of { key, label, align?, render?, width? }
- *   data       — Array of row objects
- *   emptyIcon  — React element (icon) for the empty state
- *   emptyTitle — Title for empty state
- *   emptyText  — Description for empty state
- *   footer     — Optional React element for the table footer row
- *   accentColor — Optional hex color for hover accents (default: #f97316)
+ * ReportTable — A global, premium data-table component for all system reports.
  */
 export default function ReportTable({ 
   columns = [], 
@@ -23,8 +14,8 @@ export default function ReportTable({
   accentColor = '#f97316'
 }) {
   return (
-    <div className="rt-wrapper">
-      <table className="rt-table">
+    <div className="table-container">
+      <table className="premium-table">
         <thead>
           <tr>
             {columns.map((col, idx) => (
@@ -32,12 +23,8 @@ export default function ReportTable({
                 key={col.key || idx} 
                 className={col.align === 'right' ? 'rt-right' : col.align === 'center' ? 'rt-center' : ''}
                 style={col.width ? { width: col.width } : {}}
-                onClick={col.onSort || undefined}
               >
-                <span className={`rt-th-inner ${col.onSort ? 'sortable' : ''}`}>
-                  {col.label}
-                  {col.sortIcon && <span className="rt-sort-icon">{col.sortIcon}</span>}
-                </span>
+                {col.label}
               </th>
             ))}
           </tr>
@@ -45,7 +32,7 @@ export default function ReportTable({
         <tbody>
           {data.length > 0 ? (
             data.map((row, rowIdx) => (
-              <tr key={row.id || rowIdx} className="rt-row">
+              <tr key={row.id || rowIdx}>
                 {columns.map((col, colIdx) => (
                   <td 
                     key={col.key || colIdx}
@@ -59,8 +46,8 @@ export default function ReportTable({
           ) : (
             <tr>
               <td colSpan={columns.length}>
-                <div className="rt-empty">
-                  <div className="rt-empty-icon">{emptyIcon || <FaInbox />}</div>
+                <div className="empty-cell">
+                  <div className="empty-icon">{emptyIcon || <FaInbox />}</div>
                   <h3>{emptyTitle}</h3>
                   <p>{emptyText}</p>
                 </div>
@@ -76,109 +63,78 @@ export default function ReportTable({
       </table>
 
       <style jsx>{`
-        .rt-wrapper {
-          background: white;
-          border-radius: 20px;
-          border: 1px solid #edf2f7;
+        .table-container {
+          width: 100%;
           overflow-x: auto;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+          border-radius: 12px;
+          border: 1px solid #e5e7eb;
+          background: white;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
-
-        .rt-table {
+        .premium-table {
           width: 100%;
           border-collapse: collapse;
+          font-size: 13px;
+          text-align: left;
           min-width: 700px;
         }
-
-        /* ─── Head ─── */
-        .rt-table thead tr {
-          background: #fafbfc;
-        }
-        .rt-table th {
-          text-align: left;
-          padding: 16px 20px;
-          font-size: 11px;
+        .premium-table th {
+          padding: 14px 20px;
+          background: linear-gradient(to bottom, #ffffff 0%, #f9fafb 100%);
+          color: #1f2937;
           font-weight: 800;
-          color: #94a3b8;
+          font-size: 11px;
           text-transform: uppercase;
-          letter-spacing: 0.04em;
-          border-bottom: 2px solid #f1f5f9;
+          letter-spacing: 0.05em;
+          border-bottom: 2px solid ${accentColor};
           white-space: nowrap;
-          user-select: none;
         }
-        .rt-table th:first-child { border-radius: 20px 0 0 0; }
-        .rt-table th:last-child  { border-radius: 0 20px 0 0; }
-        .rt-th-inner { display: inline-flex; align-items: center; gap: 4px; }
-        .rt-th-inner.sortable { cursor: pointer; transition: color 0.2s; }
-        .rt-th-inner.sortable:hover { color: ${accentColor}; }
-        .rt-sort-icon { font-size: 10px; display: inline-flex; }
-
-        /* ─── Body ─── */
-        .rt-table td {
+        .premium-table td {
           padding: 16px 20px;
-          border-bottom: 1px solid #f8fafc;
+          border-bottom: 1px solid #f3f4f6;
+          color: #374151;
           vertical-align: middle;
-          font-size: 13px;
           font-weight: 600;
-          color: #334155;
         }
-        .rt-row {
-          transition: background 0.15s;
-        }
-        .rt-row:hover {
-          background: rgba(249, 115, 22, 0.02);
-        }
-        .rt-row:last-child td {
+        .premium-table tbody tr:last-child td {
           border-bottom: none;
         }
-
-        /* ─── Alignment ─── */
+        .premium-table tbody tr:hover {
+          background-color: #fafafa;
+        }
         .rt-right { text-align: right; }
         .rt-center { text-align: center; }
-
-        /* ─── Footer ─── */
-        .rt-table tfoot td {
-          padding: 18px 20px;
-          background: #f8fafb;
-          border-top: 2px solid #e2e8f0;
-          font-size: 14px;
-          font-weight: 800;
-          color: #1e293b;
-        }
-
-        /* ─── Empty State ─── */
-        .rt-empty {
-          padding: 72px 20px;
+        
+        .empty-cell {
+          padding: 60px 20px;
           text-align: center;
           display: flex;
           flex-direction: column;
           align-items: center;
         }
-        .rt-empty-icon {
-          font-size: 48px;
-          color: #e2e8f0;
-          margin-bottom: 20px;
-          opacity: 0.6;
+        .empty-icon {
+          font-size: 40px;
+          color: #e5e7eb;
+          margin-bottom: 16px;
         }
-        .rt-empty h3 {
-          margin: 0 0 6px;
-          font-size: 18px;
-          font-weight: 900;
-          color: #1e293b;
+        .empty-cell h3 {
+          margin: 0 0 8px;
+          font-size: 16px;
+          font-weight: 800;
+          color: #1f2937;
         }
-        .rt-empty p {
+        .empty-cell p {
           margin: 0;
           font-size: 13px;
-          color: #94a3b8;
-          font-weight: 500;
-          max-width: 320px;
+          color: #9ca3af;
         }
-
-        /* ─── Responsive ─── */
-        @media (max-width: 768px) {
-          .rt-table th, .rt-table td {
-            padding: 12px 14px;
-          }
+        
+        tfoot td {
+          padding: 16px 20px;
+          background: #f9fafb;
+          border-top: 2px solid #e5e7eb;
+          font-weight: 800;
+          color: #111827;
         }
       `}</style>
     </div>

@@ -6,6 +6,7 @@ import {
   FaDollarSign, FaWarehouse, FaSearch, FaBoxes, FaChartPie,
   FaSortAmountDown, FaSortAmountUp, FaDownload
 } from 'react-icons/fa';
+import ReportTable from '../../components/ReportTable';
 
 export default function StockValuationPage() {
   return (
@@ -177,76 +178,66 @@ function ValuationContent() {
         </div>
 
         {/* Valuation Table */}
-        <div className="val-table-wrapper">
-          <table className="val-table">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th className="sortable" onClick={() => toggleSort('name')}>
-                  Product Name <SortIcon field="name" />
-                </th>
-                <th className="sortable text-right" onClick={() => toggleSort('qty')}>
-                  Qty on Hand <SortIcon field="qty" />
-                </th>
-                <th className="sortable text-right" onClick={() => toggleSort('cost')}>
-                  Unit Cost <SortIcon field="cost" />
-                </th>
-                <th className="sortable text-right" onClick={() => toggleSort('value')}>
-                  Total Value <SortIcon field="value" />
-                </th>
-                <th className="text-right">% of Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedData.length > 0 ? (
-                sortedData.map(item => (
-                  <tr key={item.id}>
-                    <td><span className="sku-code">#{item.sku}</span></td>
-                    <td><span className="product-name-cell">{item.productName}</span></td>
-                    <td className="text-right">
-                      <span className={`qty-cell ${item.currentQuantity <= 5 ? 'low' : ''}`}>
-                        {item.currentQuantity}
-                      </span>
-                    </td>
-                    <td className="text-right">
-                      <span className="cost-cell">₹{item.unitCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </td>
-                    <td className="text-right">
-                      <span className="value-cell">₹{item.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                    </td>
-                    <td className="text-right">
-                      <div className="pct-bar-wrap">
-                        <div className="pct-bar" style={{ width: `${totalValue > 0 ? (item.totalValue / totalValue * 100) : 0}%` }}></div>
-                        <span className="pct-text">{totalValue > 0 ? (item.totalValue / totalValue * 100).toFixed(1) : '0.0'}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="6">
-                    <div className="empty-state">
-                      <FaDollarSign className="empty-icon" />
-                      <h3>No valuation data</h3>
-                      <p>Select a warehouse with stock to view valuation.</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {sortedData.length > 0 && (
-              <tfoot>
-                <tr>
-                  <td colSpan="2"><strong>GRAND TOTAL</strong></td>
-                  <td className="text-right"><strong>{totalUnits.toLocaleString('en-IN')}</strong></td>
-                  <td className="text-right">—</td>
-                  <td className="text-right"><strong className="grand-total">₹{totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
-                  <td className="text-right"><strong>100%</strong></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+        <ReportTable
+          accentColor="#10b981"
+          columns={[
+            { 
+              key: 'sku', 
+              label: 'SKU', 
+              render: (item) => <span className="sku-code">#{item.sku}</span> 
+            },
+            { 
+              key: 'productName', 
+              label: 'Product Name', 
+              render: (item) => <span className="product-name-cell">{item.productName}</span> 
+            },
+            { 
+              key: 'currentQuantity', 
+              label: 'Qty on Hand', 
+              align: 'right',
+              render: (item) => (
+                <span className={`qty-cell ${item.currentQuantity <= 5 ? 'low' : ''}`}>
+                  {item.currentQuantity}
+                </span>
+              )
+            },
+            { 
+              key: 'unitCost', 
+              label: 'Unit Cost', 
+              align: 'right',
+              render: (item) => <span className="cost-cell">₹{item.unitCost.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            },
+            { 
+              key: 'totalValue', 
+              label: 'Total Value', 
+              align: 'right',
+              render: (item) => <span className="value-cell">₹{item.totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            },
+            { 
+              key: 'pct', 
+              label: '% of Total', 
+              align: 'right',
+              render: (item) => (
+                <div className="pct-bar-wrap">
+                  <div className="pct-bar" style={{ width: `${totalValue > 0 ? (item.totalValue / totalValue * 100) : 0}%` }}></div>
+                  <span className="pct-text">{totalValue > 0 ? (item.totalValue / totalValue * 100).toFixed(1) : '0.0'}%</span>
+                </div>
+              )
+            }
+          ]}
+          data={sortedData}
+          emptyTitle="No valuation data"
+          emptyText="Select a warehouse with stock to view valuation."
+          footer={
+            <tr>
+              <td colSpan="2"><strong>GRAND TOTAL</strong></td>
+              <td className="text-right"><strong>{totalUnits.toLocaleString('en-IN')}</strong></td>
+              <td className="text-right">—</td>
+              <td className="text-right"><strong className="grand-total">₹{totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></td>
+              <td className="text-right"><strong>100%</strong></td>
+            </tr>
+          }
+        />
 
       </div>
 
@@ -277,18 +268,6 @@ function ValuationContent() {
         .search-box .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
         .search-box input { width: 100%; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 12px 12px 48px; border-radius: 12px; font-size: 14px; font-weight: 600; color: #1e293b; transition: 0.2s; }
         .search-box input:focus { outline: none; border-color: #10b981; background: white; box-shadow: 0 0 0 4px #ecfdf5; }
-
-        .val-table-wrapper { background: white; border-radius: 20px; border: 1px solid #edf2f7; padding: 0; overflow-x: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
-        .val-table { width: 100%; border-collapse: collapse; min-width: 800px; }
-        .val-table th { text-align: left; padding: 18px 20px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; background: #fafbfc; }
-        .val-table th:first-child { border-radius: 20px 0 0 0; }
-        .val-table th:last-child { border-radius: 0 20px 0 0; }
-        .val-table th.sortable { cursor: pointer; user-select: none; transition: color 0.2s; }
-        .val-table th.sortable:hover { color: #10b981; }
-        .val-table td { padding: 16px 20px; border-bottom: 1px solid #f8fafc; vertical-align: middle; }
-        .val-table tbody tr:hover { background: #fafffe; }
-        .val-table tfoot td { padding: 18px 20px; background: #f8fafb; border-top: 2px solid #e2e8f0; font-size: 14px; }
-        .text-right { text-align: right; }
 
         .sku-code { font-size: 11px; font-weight: 800; color: #94a3b8; font-family: 'SF Mono', monospace; }
         .product-name-cell { font-size: 14px; font-weight: 800; color: #1e293b; }

@@ -142,29 +142,23 @@ export function calculateOrderTotals(
       });
     } else {
       const totalPool = discountableItems.reduce((s, i) => {
-        const isIncl = gstEnabled && (i.is_packaged_good || pricesIncludeTax);
-        const itemVal = isIncl ? (i._taxableBase * (1 + i.tax_rate / 100)) : i._taxableBase;
+        // Pool should always be the Face Value (Tax-Inclusive) because users enter bill discounts against the final total
+        const itemVal = i._taxableBase * (1 + (i.tax_rate / 100));
         return s + itemVal;
       }, 0);
 
       const totalOrderDiscUnit = Math.min(discVal, totalPool);
 
       discountableItems.forEach(i => {
-        const isIncl = gstEnabled && (i.is_packaged_good || pricesIncludeTax);
-        const itemVal = isIncl ? (i._taxableBase * (1 + i.tax_rate / 100)) : i._taxableBase;
+        const itemVal = i._taxableBase * (1 + (i.tax_rate / 100));
         const shareRatio = totalPool > 0 ? (itemVal / totalPool) : 0;
         const discUnit = totalOrderDiscUnit * shareRatio;
 
-        if (isIncl) {
-          const itemDiscEx = discUnit / (1 + i.tax_rate / 100);
-          i.order_discount_share = itemDiscEx;
-          i.order_discount_face_share = discUnit;
-          i._orderDiscDisplay = discUnit;
-        } else {
-          i.order_discount_share = discUnit;
-          i.order_discount_face_share = discUnit * (1 + i.tax_rate / 100);
-          i._orderDiscDisplay = discUnit;
-        }
+        // All bill discounts are treated as Tax-Inclusive amounts to be subtracted from the final payable
+        const itemDiscEx = discUnit / (1 + (i.tax_rate / 100));
+        i.order_discount_share = itemDiscEx;
+        i.order_discount_face_share = discUnit;
+        i._orderDiscDisplay = discUnit;
 
         i._taxableBase = Math.max(0, i._taxableBase - i.order_discount_share);
         i._taxAmount = i._taxableBase * (i.tax_rate / 100);
@@ -284,7 +278,7 @@ export function calculateOrderTotals(
   return {
     line_subtotal: Number(grossFace.toFixed(2)),
     
-    discount_amount: Number(sumOrderDiscDisplay.toFixed(2)),
+    discount_amount: Number((sumOrderDiscDisplay + sumLineDiscDisplay).toFixed(2)),
     bill_discount_amount: Number(sumOrderDiscDisplay.toFixed(2)),
     line_discount_total: Number(sumLineDiscDisplay.toFixed(2)),
 

@@ -7,9 +7,10 @@ import {
   FaSearch, FaShoppingCart, FaPlus, FaMinus, FaTrash, FaArrowLeft, FaRedo, FaCheck, FaTimes, 
   FaUtensils, FaShoppingBag, FaMotorcycle, FaChair, FaUser, FaUsers, FaWallet, FaFire,
   FaCubes, FaUserPlus, FaBoxOpen, FaChevronUp, FaChevronDown, FaReceipt, FaCreditCard, FaCashRegister,
-  FaExpand, FaCompress
+  FaExpand, FaCompress, FaExclamationCircle, FaEdit, FaClock
 } from 'react-icons/fa';
 import { calculateOrderTotals } from '../../utils/orderCalculations';
+import ReportTable from '../../components/ReportTable';
 
 const FULFILLMENT = [
   { key: 'DINE_IN',  label: 'Dine In',  icon: <FaUtensils/>,  color: '#f97316' },
@@ -24,6 +25,8 @@ export default function Sales() {
   const [products, setProducts] = useState([]);
   const [tables, setTables] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeCat, setActiveCat] = useState('ALL');
   const [activeFloor, setActiveFloor] = useState('ALL');
   const [search, setSearch] = useState('');
@@ -68,6 +71,12 @@ export default function Sales() {
   const [qpSaving, setQpSaving] = useState(false);
   const [discount, setDiscount] = useState({ type: 'amount', value: 0 });
   const [discountTab, setDiscountTab] = useState('order'); // 'order' | 'line'
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [showTableActions, setShowTableActions] = useState(false);
+  const [activeOrderDetails, setActiveOrderDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [kitchenFilter, setKitchenFilter] = useState('TAKEAWAY'); // TAKEAWAY, DELIVERY
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
 
   const searchRef = useRef(null);
   const custZoneRef = useRef(null);
@@ -110,11 +119,32 @@ export default function Sales() {
     })();
   }, []);
 
+  const fetchOrders = async () => {
+    setOrdersLoading(true);
+    try {
+      const r = await api.get('/api/v1/orders?status=KITCHEN,CONFIRMED');
+      setAllOrders(r.data.data || []);
+    } catch (e) {
+      console.error('Failed to fetch orders', e);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (opMode === 'kitchen' || opMode === 'tables') {
+      fetchOrders();
+      const interval = setInterval(fetchOrders, 30000); // Auto-refresh every 30s
+      return () => clearInterval(interval);
+    }
+  }, [opMode]);
+
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); };
   const tableOn    = config?.tableManagementEnabled === true;
   const imagesOn   = config?.menuImagesEnabled === true;
   const taxOn      = config?.taxEnabled === true;
   const listingOn  = config?.posProductListingEnabled !== false;
+  const discountOn = config?.discountEnabled !== false;
   const kitchenOn  = config?.sendToKitchenEnabled === true;
   const creditOn   = config?.creditEnabled === true;
   const customerOn = config?.customersEnabled === true;
@@ -210,15 +240,20 @@ export default function Sales() {
         orderSource: 'OFFLINE', fulfillmentType: fulfillmentType || 'TAKEAWAY',
         tableNumber: tableNumber || null, orderDate: orderTime,
         customerId: selectedCustomers[0]?.id || null,
-        totalAmount: +afterDiscount.toFixed(2), totalTaxAmount: +tax.toFixed(2),
+        totalAmount: +totalBeforeRound.toFixed(2), totalTaxAmount: +tax.toFixed(2),
         totalDiscountAmount: +discountAmt.toFixed(2),
         grandTotal: +((mode === 'settle' || mode === 'credit') ? settledAmount : total).toFixed(2),
         description: method !== 'none' ? `Payment: ${method}` : null,
-        lines: cart.map(c => ({
-          productId: c.pid, quantity: c.qty, unitPrice: c.price, unitOfMeasure: c.uom,
-          taxRate: c.tax, taxAmount: +(c.price * c.qty * c.tax / 100).toFixed(2), discountAmount: 0,
-          lineTotal: +(c.price * c.qty * (1 + c.tax / 100)).toFixed(2)
-        })),
+        lines: cart.map(c => {
+          const itemTax = parseFloat(c.tax) || 0;
+          return {
+            productId: c.pid, quantity: c.qty, unitPrice: c.price, unitOfMeasure: c.uom || 'units',
+            taxRate: itemTax, 
+            taxAmount: +(c.price * c.qty * itemTax / 100).toFixed(2), 
+            discountAmount: 0,
+            lineTotal: +(c.price * c.qty * (1 + itemTax / 100)).toFixed(2)
+          };
+        }),
       };
       const r = await api.post('/api/v1/orders', payload);
       if (r.data.success) {
@@ -264,7 +299,11 @@ export default function Sales() {
       if (r.data.success) {
         const p = r.data.data;
         setProducts(prev => [p, ...prev]);
-        setCart(prev => [{ pid: p.id, name: p.name, price: p.price, qty: 1, tax: p.taxRate || 0 }, ...prev]);
+        setCart(prev => [{ 
+          pid: p.id, name: p.name, price: p.price, qty: 1, 
+          tax: p.taxRate || 0, uom: p.uomName || 'units',
+          is_packaged: p.isPackagedGood === true
+        }, ...prev]);
         setShowQuickProduct(false);
         showToast('Product added to menu & cart!');
       }
@@ -272,7 +311,25 @@ export default function Sales() {
     finally { setQpSaving(false); }
   };
 
-  const pickTable = t => { setTableNumber(t.tableNumber); setPhase('pos'); };
+  const pickTable = async t => { 
+    if (opMode === 'tables') {
+      setSelectedTable(t);
+      setShowTableActions(true);
+      setActiveOrderDetails(null);
+      const activeOrder = allOrders.find(o => o.tableNumber === t.tableNumber && o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELLED');
+      if (activeOrder) {
+        setDetailsLoading(true);
+        try {
+          const r = await api.get(`/api/v1/orders/${activeOrder.id}`);
+          setActiveOrderDetails(r.data.data);
+        } catch (e) { console.error(e); }
+        finally { setDetailsLoading(false); }
+      }
+    } else {
+      setTableNumber(t.tableNumber); 
+      setPhase('pos'); 
+    }
+  };
   const newOrder = () => { clearCart(); setTableNumber(''); setPhase(tableOn ? 'table' : 'pos'); };
 
   const toggleFS = () => {
@@ -287,18 +344,7 @@ export default function Sales() {
     }
   };
 
-  const fetchOrders = async () => {
-    try {
-      setOrdersLoading(true);
-      const r = await api.get('/api/v1/orders');
-      if (r.data.success) setAllOrders(r.data.data);
-    } catch (e) { showToast('Failed to fetch orders', 'error'); }
-    finally { setOrdersLoading(false); }
-  };
 
-  useEffect(() => {
-    if (opMode !== 'pos') fetchOrders();
-  }, [opMode]);
 
   const catNames = useMemo(() => ['ALL', ...new Set(products.map(p => p.categoryName).filter(Boolean))], [products]);
 
@@ -432,7 +478,7 @@ export default function Sales() {
           </div>
         </header>
 
-        <div className="pos-main">
+        <div className={"pos-main" + (!listingOn && opMode === 'pos' ? ' no-listing' : '') + (opMode !== 'pos' ? ' full' : '')}>
           {opMode === 'pos' && (
             <>
               <section className="catalog">
@@ -458,7 +504,11 @@ export default function Sales() {
                           <div key={p.id} className="sugg-item" onClick={() => {
                             const existing = cart.find(c => c.pid === p.id);
                             if (existing) updQty(p.id, 1);
-                            else setCart(prev => [{ pid: p.id, name: p.name, price: p.price, qty: 1 }, ...prev]);
+                            else setCart(prev => [{ 
+                              pid: p.id, name: p.name, price: p.price, qty: 1,
+                              tax: p.taxRate || defaultTaxRate, uom: p.uomName || 'units',
+                              is_packaged: p.isPackagedGood === true
+                            }, ...prev]);
                             setSearch('');
                             setShowProdSuggestions(false);
                           }}>
@@ -477,13 +527,13 @@ export default function Sales() {
                   <div className="cats-scroll">
                     {catNames.map(c=>(
                       <div key={c} className={`cat-orb ${activeCat===c?'on':''}`} onClick={()=>setActiveCat(c)}>
-                        <div className="cat-orb-ic">{c==='ALL'?<FaCubes/>:<FaUtensils/>}</div>
                         <span className="cat-orb-t">{c==='ALL'?'All':c}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
+                {listingOn && (
                 <div className="prod-grid">
                   {products
                     .filter(p => (activeCat==='ALL' || p.categoryName===activeCat) && 
@@ -501,6 +551,7 @@ export default function Sales() {
                       </div>
                     ))}
                 </div>
+                )}
               </section>
 
               <aside className="cart-panel">
@@ -537,7 +588,7 @@ export default function Sales() {
                     {taxOn && (totals?.total_tax_included || 0) > 0.01 && <div className="cp-row"><span>{taxLabel} (incl)</span><span>{sym}{totals.total_tax_included.toFixed(2)}</span></div>}
                     {taxOn && (totals?.total_tax_added || 0) > 0.01 && <div className="cp-row"><span>{taxLabel} (+)</span><span>{sym}{totals.total_tax_added.toFixed(2)}</span></div>}
                     {taxOn && !(totals?.total_tax_added > 0) && !(totals?.total_tax_included > 0) && tax > 0.01 && <div className="cp-row"><span>{taxLabel}</span><span>{sym}{tax.toFixed(2)}</span></div>}
-                    {orderMode !== 'kitchen' && (
+                    {discountOn && orderMode !== 'kitchen' && (
                       discountAmt > 0 ? (
                         <div className="cp-row" style={{color:'#ef4444'}}>
                           <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
@@ -569,52 +620,238 @@ export default function Sales() {
           {(opMode === 'kitchen' || opMode === 'tables') && (
             <div className="op-view">
               <div className="ov-header">
-                <h3>{opMode === 'kitchen' ? 'Takeaway & Delivery Orders' : 'Table Orders'}</h3>
-                {ordersLoading && <span className="ov-loading">Refreshing…</span>}
-              </div>
-              <div className="ov-grid">
-                {allOrders
-                  .filter(o => opMode === 'kitchen' ? o.fulfillmentType !== 'DINE_IN' : o.fulfillmentType === 'DINE_IN')
-                  .filter(o => o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELLED')
-                  .map(o => (
-                    <div key={o.id} className="ov-card">
-                      <div className="ov-card-hd">
-                        <div className="ov-id">#{o.orderNo.slice(-6)}</div>
-                        <div className={`ov-st ${o.orderStatus.toLowerCase()}`}>{o.orderStatus}</div>
-                      </div>
-                      <div className="ov-details">
-                        {o.fulfillmentType === 'DINE_IN' && <div className="ov-tbl">Table {o.tableNumber}</div>}
-                        <div className="ov-time">{new Date(o.orderDate).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
-                      </div>
-                      <div className="ov-amt">{sym}{o.grandTotal.toFixed(2)}</div>
+                {opMode === 'kitchen' ? (
+                  <div style={{display:'flex', flexDirection:'column', gap:'4px'}}>
+                    <div className="kitchen-filters">
+                      {['TAKEAWAY', 'DELIVERY'].map(f => (
+                        <button 
+                          key={f} 
+                          className={`k-filter-btn ${kitchenFilter === f ? 'on' : ''}`}
+                          onClick={() => setKitchenFilter(f)}
+                        >
+                          {f.charAt(0) + f.slice(1).toLowerCase()}
+                        </button>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                ) : null}
+                <div style={{display:'flex',gap:'8px',alignItems:'center',width:opMode==='tables'?'100%':'auto',justifyContent:opMode==='tables'?'flex-end':'flex-start', marginBottom:opMode==='tables'?'-10px':'0'}}>
+                  {ordersLoading && <span className="ov-loading">Refreshing…</span>}
+                  <button className="ov-refresh" onClick={fetchOrders}><FaRedo/></button>
+                </div>
               </div>
+              
+              {opMode === 'kitchen' ? (
+                <div className="ov-grid">
+                  {allOrders
+                    .filter(o => o.fulfillmentType !== 'DINE_IN')
+                    .filter(o => kitchenFilter === 'ALL' || o.fulfillmentType === kitchenFilter)
+                    .filter(o => o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELLED')
+                    .map(o => {
+                      const isExpanded = expandedOrderId === o.id;
+                      return (
+                        <div key={o.id} className={`ov-card ${isExpanded ? 'expanded' : ''}`} 
+                             style={{borderLeft: `4px solid ${o.fulfillmentType === 'DELIVERY' ? '#0ea5e9' : '#16a34a'}`}}
+                             onClick={async () => {
+                               if (isExpanded) {
+                                 setExpandedOrderId(null);
+                               } else {
+                                 setExpandedOrderId(o.id);
+                                 setDetailsLoading(true);
+                                 try {
+                                   const r = await api.get(`/api/v1/orders/${o.id}`);
+                                   setActiveOrderDetails(r.data.data);
+                                 } catch (e) {
+                                   showToast('Err', 'error');
+                                 } finally {
+                                   setDetailsLoading(false);
+                                 }
+                               }
+                             }}>
+                          <div className="ov-card-hd">
+                            <div style={{display:'flex', flexDirection:'column'}}>
+                              <div className="ov-id">#{o.orderNo.slice(-6)}</div>
+                              <div style={{fontSize:'10px', fontWeight:700, color:'#94a3b8'}}>{o.fulfillmentType}</div>
+                            </div>
+                            <div className={`ov-st ${o.orderStatus.toLowerCase()}`}>{o.orderStatus}</div>
+                          </div>
+                          
+                          <div className="ov-details" style={{padding:'8px 0'}}>
+                            <div className="ov-time" style={{display:'flex', alignItems:'center', gap:'6px'}}>
+                              <FaClock style={{fontSize:'10px', opacity:0.5}}/>
+                              <span>{new Date(o.orderDate).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+                            </div>
+                            {o.customerName && (
+                              <div style={{fontSize:'11px', fontWeight:700, color:'#475569', marginTop:'4px'}}>
+                                <FaUser style={{fontSize:'9px', marginRight:'4px', opacity:0.5}}/>
+                                {o.customerName}
+                              </div>
+                            )}
+                          </div>
+
+                          {isExpanded && (
+                            <div className="ov-expand-content" onClick={e => e.stopPropagation()}>
+                              <div className="ov-items-list" style={{maxHeight:'150px', overflowY:'auto', borderTop:'1px solid #f1f5f9', paddingTop:'8px', marginTop:'4px'}}>
+                                {detailsLoading ? (
+                                  <div style={{fontSize:'10px', color:'#94a3b8', textAlign:'center', padding:'10px'}}>Loading Items...</div>
+                                ) : activeOrderDetails?.id === o.id ? (
+                                  activeOrderDetails.lines?.map((l, idx) => (
+                                    <div key={idx} style={{display:'flex', justifyContent:'space-between', fontSize:'11px', marginBottom:'4px'}}>
+                                      <span style={{fontWeight:600}}>{l.productName} <span style={{color:'var(--theme)'}}>x{l.quantity}</span></span>
+                                    </div>
+                                  ))
+                                ) : null}
+                              </div>
+
+                              <div className="ov-actions" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px', marginTop:'12px', borderTop:'1px solid #f1f5f9', paddingTop:'12px'}}>
+                                <button className="vm-pill micro lite edit" onClick={async () => {
+                                  const details = activeOrderDetails?.id === o.id ? activeOrderDetails : null;
+                                  if (!details) return;
+                                  setFulfillmentType(o.fulfillmentType);
+                                  setTableNumber(o.tableNumber || '');
+                                  setCart(details.lines?.map(l => ({ 
+                                    pid: l.productId, name: l.productName, price: l.unitPrice, 
+                                    qty: l.quantity, tax: l.taxRate, lineDiscount: 0,
+                                    uom: l.unitOfMeasure, is_packaged: l.isPackagedGood
+                                  })) || []);
+                                  setOpMode('pos');
+                                }}>Edit</button>
+                                
+                                <button className="vm-pill micro lite bill" onClick={async () => {
+                                  try { await api.post(`/api/v1/orders/${o.id}/print-bill`); showToast('Sent'); } catch (e) { showToast('Err', 'error'); }
+                                }}>Print</button>
+                                
+                                <button className="vm-pill micro lite complete" style={{gridColumn:'span 2'}} onClick={async () => {
+                                  if(!confirm('Complete Order?')) return;
+                                  try { 
+                                    await api.patch(`/api/v1/orders/${o.id}/status`, null, { params: { status: 'COMPLETED' } }); 
+                                    showToast('Done'); 
+                                    fetchOrders(); 
+                                  } catch (e) { showToast('Err', 'error'); }
+                                }}>Complete Transaction</button>
+                                
+                                <button className="vm-pill micro lite cancel" style={{gridColumn:'span 2'}} onClick={async () => {
+                                  if(!confirm('Cancel Order?')) return;
+                                  try { 
+                                    await api.patch(`/api/v1/orders/${o.id}/status`, null, { params: { status: 'CANCELLED' } }); 
+                                    showToast('Cancelled'); 
+                                    fetchOrders(); 
+                                  } catch (e) { showToast('Err', 'error'); }
+                                }}>Cancel Order</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {!isExpanded && (
+                            <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', borderTop:'1px solid #f8fafc', paddingTop:'8px'}}>
+                               <div style={{fontSize:'10px', fontWeight:800, color:'#94a3b8'}}>{o.totalItems || 0} Items</div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                <div className="vm-graph" style={{padding:0}}>
+                  {(() => {
+                    const grouped = tables.reduce((acc, t) => {
+                      const f = t.floor || 'Main';
+                      const s = t.section || 'General';
+                      if (!acc[f]) acc[f] = {};
+                      if (!acc[f][s]) acc[f][s] = [];
+                      acc[f][s].push(t);
+                      return acc;
+                    }, {});
+
+                    return Object.entries(grouped).map(([floor, sections]) => (
+                      <div key={floor} className="vm-floor-group" style={{marginBottom:'12px'}}>
+                        <div style={{display:'flex', alignItems:'center', gap:'6px', marginBottom:'4px', padding:'0 2px'}}>
+                          <div style={{width:'2px', height:'12px', background:'var(--theme)', borderRadius:'4px', opacity:0.6}}/>
+                          <h4 style={{fontSize:'10px', fontWeight:900, textTransform:'uppercase', letterSpacing:'0.05em', color:'#64748b', margin:0}}>{floor}</h4>
+                        </div>
+                        
+                        {Object.entries(sections).map(([section, sectionTables]) => (
+                          <div key={section} className="vm-section-group" style={{marginBottom:'8px', paddingLeft:'8px'}}>
+                            {section !== 'General' && <div style={{fontSize:'8px', fontWeight:800, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom: '4px'}}>{section}</div>}
+                            <div className="vm-grid">
+                              {sectionTables.map(t => {
+                                const s = (t.status||'').toUpperCase();
+                                const cls = s==='AVAILABLE'?'av':s==='OCCUPIED'?'occ':s==='BILLED'?'bld':s==='RESERVED'?'res':s==='CLEANING'?'cln':s==='MAINTENANCE'?'mnt':'av';
+                                const activeOrder = allOrders.find(o => o.tableNumber === t.tableNumber && o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELLED');
+                                
+                                return (
+                                  <button key={t.id} className={`vm-node ${cls} ${t.shape==='round'?'round':''}`} onClick={()=>pickTable(t)}>
+                                    <div className="vm-node-c">
+                                      <span className="vm-node-n">{t.tableNumber}</span>
+                                      {activeOrder ? (
+                                        <span className="vm-node-s" style={{fontSize:'10px',fontWeight:700,color:'var(--theme)'}}>{sym}{activeOrder.grandTotal.toFixed(0)}</span>
+                                      ) : (
+                                        <span className="vm-node-s"><FaUsers/> {t.seatingCapacity||4}</span>
+                                      )}
+                                    </div>
+                                    {s==='OCCUPIED' && <div className="vm-pulse"/>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ));
+                  })()}
+                  
+                  {opMode === 'tables' && (
+                    <div className="vm-floating-leg">
+                      <div className="vm-leg-i"><span className="vm-dot av"/>Available</div>
+                      <div className="vm-leg-i"><span className="vm-dot occ"/>Occupied</div>
+                      <div className="vm-leg-i"><span className="vm-dot bld"/>Billed</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {opMode === 'history' && (
             <div className="op-view">
-              <div className="ov-header">
-                <h3>Order History</h3>
-                <button className="ov-refresh" onClick={fetchOrders}><FaRedo/></button>
-              </div>
-              <table className="history-table">
-                <thead>
-                  <tr><th>Order No</th><th>Date</th><th>Type</th><th>Total</th><th>Status</th></tr>
-                </thead>
-                <tbody>
-                  {allOrders.map(o => (
-                    <tr key={o.id}>
-                      <td>#{o.orderNo.slice(-8)}</td>
-                      <td>{new Date(o.orderDate).toLocaleDateString()}</td>
-                      <td>{o.fulfillmentType}</td>
-                      <td>{sym}{o.grandTotal.toFixed(2)}</td>
-                      <td><span className={`ov-st-pill ${o.orderStatus.toLowerCase()}`}>{o.orderStatus}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <ReportTable
+                accentColor={themeColor}
+                columns={[
+                  { 
+                    key: 'orderNo', 
+                    label: 'Order No',
+                    render: (o) => <span style={{fontFamily:'monospace', fontWeight:800, color:themeColor}}>#{o.orderNo.slice(-8)}</span>
+                  },
+                  { 
+                    key: 'orderDate', 
+                    label: 'Date & Time',
+                    render: (o) => (
+                      <div style={{display:'flex', flexDirection:'column'}}>
+                        <span style={{fontWeight:700}}>{new Date(o.orderDate).toLocaleDateString()}</span>
+                        <span style={{fontSize:'10px', opacity:0.6}}>{new Date(o.orderDate).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                      </div>
+                    )
+                  },
+                  { 
+                    key: 'fulfillmentType', 
+                    label: 'Type',
+                    render: (o) => (
+                      <span style={{fontSize:'10px', fontWeight:800, textTransform:'uppercase', padding:'4px 8px', borderRadius:'6px', background:'#f1f5f9'}}>
+                        {o.fulfillmentType}
+                      </span>
+                    )
+                  },
+                  { 
+                    key: 'grandTotal', 
+                    label: 'Total', 
+                    align: 'right',
+                    render: (o) => <span style={{fontWeight:900, color:'#0f172a'}}>{sym}{o.grandTotal.toFixed(2)}</span>
+                  }
+                ]}
+                data={allOrders.filter(o => o.orderStatus === 'COMPLETED')}
+                emptyTitle="No completed orders"
+                emptyText="Once orders are finalized, they will appear here in your history."
+              />
             </div>
           )}
         </div>
@@ -758,15 +995,12 @@ export default function Sales() {
                     <label>🏷️ Discount Value</label>
                     <input type="number" placeholder="0.00" value={discount.value || ''} onChange={e=>setDiscount(d=>({...d,value:parseFloat(e.target.value)||0}))}/>
                   </div>
-                  {discount.value > 0 && (
-                    <button className="disc-clear-link" onClick={()=>setDiscount({type:'amount',value:0})}>✕ Clear Discount</button>
-                  )}
+
                 </div>
               )}
 
-              <div style={{padding:'16px 24px',borderTop:'1px solid #f1f5f9',display:'flex',gap:'12px'}}>
-                <button className="mdl-btn-discard" onClick={()=>setShowDiscountModal(false)}>Close</button>
-                <button className="mdl-btn-confirm theme-bg" onClick={()=>setShowDiscountModal(false)}>Apply</button>
+              <div style={{padding:'12px 20px',borderTop:'1px solid #f1f5f9',display:'flex',justifyContent:'center'}}>
+                <button className="mdl-btn-confirm" style={{width:'100%',maxWidth:'240px'}} onClick={()=>setShowDiscountModal(false)}>Apply & Close</button>
               </div>
             </div>
           </div>
@@ -859,16 +1093,16 @@ export default function Sales() {
         .content-area { padding: 0 !important; }
         .dashboard-header { border-bottom: 1px solid #e2e8f0; }
         .mdl-ov{position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:vmFade .2s}
-        .mdl-box{background:#fff;border-radius:16px;width:100%;overflow:hidden;position:relative;animation:vmSlide .3s cubic-bezier(0.16,1,0.3,1);box-shadow:0 30px 60px rgba(var(--rgb),0.15)}
-        .theme-bg{background:var(--theme) !important;color:#fff !important}
+        .mdl-box{background:#fff;border-radius:20px;width:100%;overflow:hidden;position:relative;animation:vmSlide .3s cubic-bezier(0.16,1,0.3,1);box-shadow:0 30px 60px rgba(0,0,0,0.12)}
+        .theme-bg{background:rgba(var(--rgb), 0.05) !important;color:var(--theme) !important}
         .theme-text{color:var(--theme)}
-        .mdl-hdr{padding:24px;display:flex;align-items:flex-start;justify-content:space-between;border-top-left-radius:16px;border-top-right-radius:16px}
-        .mdl-hdr-info{display:flex;flex-direction:column;gap:4px}
-        .mdl-hdr-t{margin:0;font-size:20px;font-weight:900;color:#fff}
-        .mdl-hdr-sub{font-size:10px;font-weight:800;letter-spacing:0.5px;opacity:0.9;text-transform:uppercase;color:#fff}
-        .mdl-hdr-x{width:32px;height:32px;border-radius:10px;border:none;background:rgba(255,255,255,0.2);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
-        .mdl-hdr-x:hover{background:rgba(255,255,255,0.4);transform:rotate(90deg)}
-        .mdl-body{padding:24px;display:flex;flex-direction:column;gap:16px;background:#fff}
+        .mdl-hdr{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f1f5f9}
+        .mdl-hdr-info{display:flex;flex-direction:column;gap:2px}
+        .mdl-hdr-t{margin:0;font-size:17px;font-weight:900;color:inherit}
+        .mdl-hdr-sub{font-size:9px;font-weight:800;letter-spacing:0.5px;opacity:0.6;text-transform:uppercase;color:inherit}
+        .mdl-hdr-x{width:28px;height:28px;border-radius:8px;border:none;background:rgba(0,0,0,0.05);color:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s}
+        .mdl-hdr-x:hover{background:rgba(0,0,0,0.1);transform:rotate(90deg)}
+        .mdl-body{padding:20px;display:flex;flex-direction:column;gap:16px;background:#fff}
         .mdl-field-row{display:flex;gap:12px}
         .mdl-field-row > div{flex:1}
         .mdl-field{display:flex;flex-direction:column;gap:6px}
@@ -884,11 +1118,11 @@ export default function Sales() {
         .tg-lbl input:checked + .tg-slider.veg{background:#16a34a}
         .tg-lbl input:checked + .tg-slider.pkg{background:#3b82f6}
         .tg-lbl input:checked + .tg-slider::after{transform:translateX(18px)}
-        .mdl-acts-row{display:flex;gap:12px;margin-top:8px}
-        .mdl-btn-discard{flex:1;padding:14px;border-radius:12px;border:2px solid #f1f5f9;background:#fff;color:#64748b;font:800 13px inherit;cursor:pointer;transition:.2s}
-        .mdl-btn-discard:hover{background:#f8fafc;color:#0f172a}
-        .mdl-btn-confirm{flex:1;padding:14px;border-radius:12px;border:none;font:800 13px inherit;cursor:pointer;transition:.2s;box-shadow:0 8px 16px rgba(var(--rgb),0.2)}
-        .mdl-btn-confirm:hover{filter:brightness(1.1);transform:translateY(-1px)}
+        .mdl-acts-row{display:flex;gap:10px;margin-top:4px}
+        .mdl-btn-discard{flex:1;padding:12px;border-radius:10px;border:2px solid #f1f5f9;background:#fff;color:#94a3b8;font:800 12px inherit;cursor:pointer;transition:.2s}
+        .mdl-btn-discard:hover{background:#f8fafc;color:#64748b}
+        .mdl-btn-confirm{flex:1;padding:12px;border-radius:10px;border:none;background:var(--theme);color:#fff;font:800 12px inherit;cursor:pointer;transition:.2s;box-shadow:0 4px 12px rgba(var(--rgb),0.2)}
+        .mdl-btn-confirm:hover{filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 8px 16px rgba(var(--rgb),0.3)}
         .mdl-settled{display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;background:#f8fafc;border-radius:16px;margin-bottom:20px}
         .mdl-settled span{font-size:12px;font-weight:700;color:#94a3b8}
         .mdl-settled b{font-size:24px;font-weight:900}
@@ -907,7 +1141,96 @@ export default function Sales() {
       `}</style>
       <style jsx>{POS_CSS}</style>
       <style jsx>{SETUP_CSS}</style>
-      {toast && <Toast {...toast} onClose={()=>setToast(null)}/>}
+      {showTableActions && selectedTable && (
+        <div className="mdl-ov" onClick={()=>setShowTableActions(false)} style={{background:'rgba(15, 23, 42, 0.08)', backdropFilter:'blur(8px)'}}>
+          <div className="mdl-box" onClick={e=>e.stopPropagation()} style={{maxWidth:290, borderRadius:32, overflow:'hidden', background:'#fff', boxShadow:'0 30px 60px -12px rgba(0,0,0,0.12)', border:'1px solid rgba(255,255,255,0.8)'}}>
+            <div style={{padding:'18px 24px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center', background:'#fff'}}>
+              <div>
+                <div style={{fontSize:'16px', fontWeight:900, color:'#0f172a'}}>Table {selectedTable.tableNumber}</div>
+                <div style={{fontSize:'10px', color:'#94a3b8', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em'}}>{selectedTable.section}</div>
+              </div>
+              <button onClick={()=>setShowTableActions(false)} style={{border:'none', background:'#f8fafc', color:'#94a3b8', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px'}} className="h-scale"><FaTimes/></button>
+            </div>
+            
+            <div className="mdl-body" style={{padding:'20px', display:'flex', flexDirection:'column', gap:'12px'}}>
+              {(() => {
+                const activeOrder = allOrders.find(o => o.tableNumber === selectedTable.tableNumber && o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELLED');
+                if (!activeOrder) return <div style={{textAlign:'center', padding:'30px 10px', color:'#94a3b8', fontSize:'12px', fontWeight:700}}>Empty Table</div>;
+                
+                return (
+                  <>
+                    <div style={{maxHeight:'110px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'4px', padding:'0 4px'}}>
+                      {detailsLoading ? (
+                        <div style={{textAlign:'center', padding:'10px', fontSize:'11px', color:'#94a3b8'}}>Syncing...</div>
+                      ) : activeOrderDetails?.lines?.map((l, i) => (
+                        <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                          <span style={{fontSize:'10.5px', fontWeight:600, color:'#475569', letterSpacing:'0.01em'}}>{l.productName} <span style={{color:'var(--theme)', fontWeight:700}}>x{l.quantity}</span></span>
+                          <span style={{fontSize:'10.5px', fontWeight:700, color:'#1e293b'}}>{sym}{(l.unitPrice * l.quantity).toFixed(0)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{padding:'10px 0 0', borderTop:'1px solid #f1f5f9', display:'flex', flexDirection:'column', gap:'3px'}}>
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px', fontWeight:500, color:'#94a3b8', letterSpacing:'0.02em'}}>
+                        <span>Subtotal</span>
+                        <span>{sym}{(activeOrder.grandTotal / 1.05).toFixed(0)}</span>
+                      </div>
+                      {activeOrder.totalTax > 0 && (
+                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px', fontWeight:500, color:'#94a3b8', letterSpacing:'0.02em'}}>
+                          <span>Tax</span>
+                          <span>{sym}{activeOrder.totalTax.toFixed(0)}</span>
+                        </div>
+                      )}
+                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'14px', fontWeight:700, color:'#1e293b', marginTop:'4px', letterSpacing:'-0.01em'}}>
+                        <span style={{fontWeight:500, color:'#64748b'}}>Total</span>
+                        <span style={{color:'var(--theme)', fontWeight:800}}>{sym}{activeOrder.grandTotal.toFixed(0)}</span>
+                      </div>
+                    </div>
+
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginTop:'6px'}}>
+                      <button className="vm-pill micro lite edit" onClick={() => {
+                        setFulfillmentType('DINE_IN'); setTableNumber(selectedTable.tableNumber);
+                        setCart(activeOrderDetails?.lines?.map(l => ({ pid: l.productId, name: l.productName, price: l.unitPrice, qty: l.quantity, tax: l.taxRate, lineDiscount: 0 })) || []);
+                        setOpMode('pos'); setShowTableActions(false);
+                      }}>Edit</button>
+
+                      <button className="vm-pill micro lite bill" onClick={async () => {
+                        try { await api.post(`/api/v1/orders/${activeOrder.id}/print-bill`); showToast('Sent'); } catch (e) { showToast('Err', 'error'); }
+                      }}>Print Bill</button>
+
+                      <button className="vm-pill micro lite complete" style={{gridColumn:'span 2'}} onClick={async () => {
+                        if(!confirm('Complete?')) return;
+                        try { await api.put(`/api/v1/orders/${activeOrder.id}/status`, { status: 'COMPLETED' }); showToast('Done'); fetchOrders(); setShowTableActions(false); } catch (e) { showToast('Err', 'error'); }
+                      }}>Complete Transaction</button>
+
+                      <button className="vm-pill micro lite cancel" style={{gridColumn:'span 2'}} onClick={async () => {
+                        if(!confirm('Cancel?')) return;
+                        try { await api.put(`/api/v1/orders/${activeOrder.id}/status`, { status: 'CANCELLED' }); showToast('Cancelled'); fetchOrders(); setShowTableActions(false); } catch (e) { showToast('Err', 'error'); }
+                      }}>Cancel Order</button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        .vm-pill.micro.lite{
+          padding:12px 4px; border:none; border-radius:18px; cursor:pointer; font:900 10px inherit; 
+          text-transform:uppercase; letter-spacing:0.04em; transition:.3s; text-align:center;
+        }
+        .vm-pill.edit{ background:#eff6ff; color:#3b82f6; }
+        .vm-pill.bill{ background:#fff7ed; color:#f97316; }
+        .vm-pill.complete{ background:#f0fdf4; color:#10b981; }
+        .vm-pill.cancel{ background:#fef2f2; color:#ef4444; }
+        
+        .vm-pill:hover{ filter:brightness(0.97); transform:scale(1.02); }
+        .vm-pill:active{ transform:scale(0.98); }
+        .h-scale:hover{ transform:rotate(90deg) scale(1.1); background:#fef2f2 !important; }
+      `}</style>
+
     </DashboardLayout>
   );
 }
@@ -946,6 +1269,7 @@ const POS_CSS = `
 .ctx-bk{width:32px;height:32px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#000;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.2s}
 .ctx-bk:hover{border-color:var(--theme);color:var(--theme)}
 .hdr-cust-suggestions{position:absolute;top:calc(100% + 8px);left:0;width:240px;background:#fff;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 12px 30px rgba(0,0,0,0.1);z-index:200;overflow:hidden;animation:sIn .2s ease}
+.pos-search-zone .hdr-cust-suggestions{width:100%}
 @keyframes sIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .sugg-item{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;transition:.2s}
 .sugg-item:hover{background:#f8fafc;color:var(--theme)}
@@ -958,6 +1282,17 @@ const POS_CSS = `
 .sugg-none{padding:12px;text-align:center;font-size:11px;color:#94a3b8;font-weight:600}
 
 .pos-main{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,31vw,430px);flex:1;min-height:0;overflow:hidden}
+.pos-main.full{grid-template-columns:1fr}
+.pos-main.no-listing{display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto minmax(0,1fr);grid-template-areas:"search summary" "body summary";gap:24px;padding:24px;background:#f8fafc;width:100%;}
+.pos-main.no-listing .catalog{grid-area:search;width:100%;max-width:none;padding:0;overflow:visible;}
+.pos-main.no-listing .cart-panel{display:contents;}
+.pos-main.no-listing .cp-hd{display:none;}
+.pos-main.no-listing .cp-body{grid-area:body;background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:8px;box-shadow:0 4px 10px rgba(0,0,0,0.02);overflow-y:auto;}
+.pos-main.no-listing .cp-ft{grid-area:summary;background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:24px;box-shadow:0 10px 30px rgba(var(--rgb),0.08);display:flex;flex-direction:column;gap:16px;border-top:none;}
+@media(max-width:1024px){
+  .pos-main.no-listing{grid-template-columns:1fr;grid-template-rows:auto auto auto;grid-template-areas:"search" "body" "summary";overflow-y:auto;padding:16px;gap:16px;}
+  .pos-main.no-listing .cp-body{min-height:30vh;overflow-y:auto;}
+}
 .catalog{min-width:0;min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:16px}
 .pos-hdr-c{flex:1 1 320px;display:flex;justify-content:center;min-width:0}
 .op-switcher{display:flex;background:#f1f5f9;padding:4px;border-radius:12px;gap:4px;flex-shrink:0;max-width:100%;overflow:auto}
@@ -965,17 +1300,25 @@ const POS_CSS = `
 .op-btn.on{background:var(--theme);color:#fff;box-shadow:0 4px 12px rgba(var(--rgb),0.2)}
 .op-btn:hover:not(.on){background:rgba(var(--rgb),0.05);color:var(--theme)}
 
-.op-view{flex:1;padding:30px;overflow-y:auto;display:flex;flex-direction:column;gap:24px}
+.op-view{flex:1;padding:12px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
 .ov-header{display:flex;justify-content:space-between;align-items:center}
 .ov-header h3{font-size:20px;font-weight:900;color:#000}
-.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
-.ov-card{background:#fff;padding:20px;border-radius:16px;border:1.5px solid #f1f5f9;display:flex;flex-direction:column;gap:12px;transition:.2s}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.ov-card{background:#fff;padding:12px;border-radius:12px;border:1.5px solid #f1f5f9;display:flex;flex-direction:column;gap:6px;transition:.3s;cursor:pointer}
 .ov-card:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(0,0,0,0.03)}
-.ov-card-hd{display:flex;justify-content:space-between;align-items:center}
-.ov-id{font-weight:900;color:#000}
-.ov-st{font-size:10px;font-weight:900;text-transform:uppercase;padding:4px 8px;border-radius:6px;background:#f1f5f9;color:#000}
+.ov-card.expanded{grid-column:span 1;border-color:var(--theme);box-shadow:0 20px 40px rgba(var(--rgb),0.1);transform:scale(1.02)}
+@media(min-width:900px){ .ov-card.expanded{ grid-column: span 2; } }
+.ov-card-hd{display:flex;justify-content:space-between;align-items:flex-start}
+.ov-id{font-size:13px;font-weight:900;color:#000}
+.ov-st{font-size:9px;font-weight:900;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:#f1f5f9;color:#000}
 .ov-st.kitchen{background:#fff7ed;color:#f97316}
 .ov-st.confirmed{background:#f0fdf4;color:#16a34a}
+.kitchen-filters{display:flex;gap:4px;margin-top:2px}
+.k-filter-btn{padding:3px 8px;border-radius:4px;border:1px solid #e2e8f0;background:#fff;font:900 8.5px inherit;color:#94a3b8;cursor:pointer;transition:.2s;text-transform:uppercase;letter-spacing:0.06em;display:flex;align-items:center;gap:4px}
+.k-filter-btn::before{content:'';width:4px;height:4px;border-radius:50%;background:#cbd5e1;transition:.2s}
+.k-filter-btn.on{background:rgba(var(--rgb), 0.08);color:var(--theme);border-color:rgba(var(--rgb), 0.2);box-shadow:none}
+.k-filter-btn.on::before{background:var(--theme);box-shadow:0 0 4px var(--theme)}
+.k-filter-btn:hover:not(.on){background:#f8fafc;color:#64748b;border-color:#cbd5e1}
 .history-table{width:100%;border-collapse:separate;border-spacing:0}
 .history-table th{text-align:left;padding:12px;font-size:12px;color:#000;border-bottom:1px solid #f1f5f9}
 .history-table td{padding:16px 12px;font-weight:700;border-bottom:1px solid #f8fafc;color:#000}
@@ -986,22 +1329,21 @@ const POS_CSS = `
 .sb-x{background:none;border:none;color:#000;cursor:pointer}
 .entry-add{width:36px;height:36px;border-radius:10px;border:none;background:var(--theme);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow: 0 4px 10px rgba(var(--rgb), 0.2);}
 
-.cats-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px}
-.cat-orb{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px;border-radius:16px;background:#fff;border:1px solid #e2e8f0;min-width:80px;cursor:pointer;transition:.2s}
-.cat-orb.on{background:var(--theme);border-color:var(--theme);color:#fff;box-shadow:0 8px 16px rgba(var(--rgb),.2)}
-.cat-orb-ic{width:40px;height:40px;border-radius:10px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;font-size:16px;color:#000}
-.cat-orb.on .cat-orb-ic{background:rgba(255,255,255,0.2);color:#fff}
-.cat-orb-t{font-size:11px;font-weight:800;color:#000}
+.cats-scroll{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.cats-scroll::-webkit-scrollbar{display:none}
+.cat-orb{flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:5px 12px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;cursor:pointer;transition:.2s}
+.cat-orb.on{background:var(--theme);border-color:var(--theme);color:#fff;box-shadow:0 2px 8px rgba(var(--rgb),.2)}
+.cat-orb-t{font-size:11px;font-weight:800;color:#000;text-transform:capitalize}
 .cat-orb.on .cat-orb-t{color:#fff}
 
-.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,160px),1fr));gap:12px;align-content:start}
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,95px),1fr));gap:8px;align-content:start}
 .pc-card{background:#fff;border-radius:16px;overflow:hidden;border:1px solid #f1f5f9;transition:.2s;display:flex;flex-direction:column;box-shadow:0 2px 6px rgba(0,0,0,0.02)}
 .pc-card:hover{transform:translateY(-2px);box-shadow:0 12px 24px rgba(var(--rgb),0.08);border-color:var(--theme)}
 .pc-img-v{aspect-ratio:1.5;background-size:cover;background-position:center;background-color:#f8fafc;border-bottom:1px solid #f8fafc}
-.pc-body{padding:10px;display:flex;flex-direction:column;gap:6px;flex:1}
-.pc-nm{font-size:11px;font-weight:700;color:#000;height:28px;line-height:1.3;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.pc-body{padding:6px;display:flex;flex-direction:column;gap:2px;flex:1}
+.pc-nm{font-size:9.5px;font-weight:700;color:#000;height:24px;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .pc-pr-row{display:flex;justify-content:space-between;align-items:center;margin-top:auto}
-.pc-pr{font-size:13px;font-weight:800;color:#000}
+.pc-pr{font-size:11px;font-weight:800;color:#000}
 .pos-search-zone{position:relative}
 .ps-bar-wrapper{display:flex;align-items:center;background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:4px 4px 4px 16px;transition:.2s;box-shadow:0 2px 10px rgba(0,0,0,0.02)}
 .ps-bar-wrapper:focus-within{border-color:var(--theme);box-shadow:0 0 0 3px rgba(var(--rgb),.15)}
@@ -1011,7 +1353,7 @@ const POS_CSS = `
 .ps-clear:hover{color:#000}
 .ps-add-btn{display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:var(--theme);color:#fff;border:none;border-radius:10px;cursor:pointer;transition:.2s;box-shadow:0 4px 10px rgba(var(--rgb),.2)}
 .ps-add-btn:hover{filter:brightness(1.1);transform:scale(1.05)}
-.pc-add{width:28px;height:28px;border-radius:8px;border:none;background:#f8fafc;color:var(--theme);cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;transition:.2s}
+.pc-add{width:22px;height:22px;border-radius:5px;border:none;background:#f8fafc;color:var(--theme);cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;transition:.2s}
 .pc-add:hover{background:var(--theme);color:#fff;transform:scale(1.1)}
 .pc-add svg{font-size:10px}
 
@@ -1025,23 +1367,24 @@ const POS_CSS = `
 .ff-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:12px;background:#f8fafc;font:800 11px inherit;color:var(--bc);border:1.5px solid #f1f5f9;transition:.2s}
 .ff-badge:hover{border-color:var(--bc);background:#fff}
 .pos-modes.single .mode-btn{padding:8px 16px;border-radius:12px;font-weight:900;font-size:12px;color:#000}
-.cp-body{flex:1;min-height:0;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
-.ci-card{display:flex;gap:12px;padding:14px;border-radius:16px;background:#fff;color:#000;border:1px solid rgba(var(--rgb),0.1);box-shadow:0 4px 12px rgba(0,0,0,0.02);transition:0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;}
-.ci-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--theme);opacity:0;transition:0.3s;}
-.ci-card:hover{transform:translateX(4px);box-shadow:0 8px 24px rgba(var(--rgb),0.12);border-color:var(--theme);}
+.cp-body{flex:1;min-height:0;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.ci-card{display:flex;gap:10px;padding:8px 12px;border-radius:10px;background:#fff;color:#000;border:1px solid rgba(var(--rgb),0.1);box-shadow:0 2px 6px rgba(0,0,0,0.02);transition:0.3s cubic-bezier(0.4,0,0.2,1);position:relative;overflow:hidden;align-items:center}
+.ci-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--theme);opacity:0;transition:0.3s;}
+.ci-card:hover{transform:translateX(2px);box-shadow:0 4px 12px rgba(var(--rgb),0.08);border-color:var(--theme);}
 .ci-card:hover::before{opacity:1;}
-.ci-img{width:54px;height:54px;border-radius:10px;background-size:cover;background-position:center;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.ci-img{width:36px;height:36px;border-radius:8px;background-size:cover;background-position:center;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
 .ci-info{flex:1;display:flex;flex-direction:column;justify-content:center}
-.ci-nm{font-size:13px;font-weight:800;color:#0f172a}
-.ci-pr-row{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
-.ci-pr{font-size:14px;font-weight:900;color:var(--theme)}
-.ci-qty{display:flex;align-items:center;gap:8px;background:#f8fafc;padding:4px;border-radius:8px;border:1px solid #e2e8f0}
-.ci-q-btn{border:none;background:#fff;color:#0f172a;cursor:pointer;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+.ci-nm{font-size:11.5px;font-weight:800;color:#0f172a}
+.ci-pr-row{display:flex;justify-content:space-between;align-items:center;margin-top:2px}
+.ci-pr{font-size:12.5px;font-weight:900;color:var(--theme)}
+.ci-qty{display:flex;align-items:center;gap:6px;background:#f8fafc;padding:3px;border-radius:6px;border:1px solid #e2e8f0}
+.ci-q-btn{border:none;background:#fff;color:#0f172a;cursor:pointer;width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;transition:0.2s;box-shadow:0 1px 2px rgba(0,0,0,0.05);font-size:10px;}
 .ci-q-btn:hover{background:var(--theme);color:#fff}
-.ci-q-val{font-size:12px;font-weight:800;color:#0f172a;min-width:16px;text-align:center}
+.ci-q-val{font-size:11px;font-weight:800;color:#0f172a;min-width:14px;text-align:center}
 .cp-ft{padding:16px;background:linear-gradient(to top, rgba(var(--rgb),0.03), #fff);border-top:1px solid rgba(var(--rgb),0.1);display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 30px rgba(0,0,0,0.02)}
 .cp-summary{display:flex;flex-direction:column;gap:6px;padding:12px 16px;background:#f8fafc;border-radius:12px;border:1px solid rgba(var(--rgb),0.1)}
 .cp-row{display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:#64748b}
+.ov-time{font-size:11px;font-weight:700;color:#64748b}
 .cp-row.tot{font-size:22px;font-weight:900;color:var(--theme);margin-top:6px;padding-top:8px;border-top:2px dashed rgba(var(--rgb),0.2);align-items:center}
 .cp-main-act{padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg, var(--theme), rgba(var(--rgb),0.7));color:#fff;font:900 15px inherit;cursor:pointer;box-shadow:0 8px 20px rgba(var(--rgb),0.3);transition:0.3s;position:relative;overflow:hidden;}
 .cp-main-act::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4),transparent);transform:skewX(-20deg);transition:0s;}
@@ -1102,10 +1445,11 @@ const POS_CSS = `
 .vm-dot.cln{background:#f59e0b;box-shadow:0 0 8px rgba(245,158,11,0.4)}
 .vm-dot.mnt{background:#64748b;box-shadow:0 0 8px rgba(100,116,139,0.4)}
 
-.vm-graph{flex:1;overflow:auto;padding:24px;background:#f8fafc}
-.vm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:16px;justify-content:center}
-.vm-node{width:100%;aspect-ratio:1.2;border-radius:24px;border:none;background:#ffffff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#0f172a;position:relative;padding:12px;box-shadow:0 4px 12px rgba(0,0,0,0.03)}
-.vm-node:hover{transform:translateY(-4px);box-shadow:0 12px 24px rgba(0,0,0,0.06)}
+.vm-graph{flex:1;overflow:auto;padding:20px;background-color:#fcfdfe;background-image:radial-gradient(#e2e8f0 1px,transparent 0);background-size:24px 24px;position:relative}
+.vm-floating-leg{position:fixed;bottom:24px;right:24px;background:rgba(255,255,255,0.9);backdrop-filter:blur(8px);padding:8px 16px;border-radius:100px;display:flex;gap:16px;box-shadow:0 10px 25px rgba(0,0,0,0.08);border:1px solid #e2e8f0;z-index:100}
+.vm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(85px,1fr));gap:12px;justify-content:start}
+.vm-node{width:100%;aspect-ratio:1.1;border-radius:18px;border:none;background:#ffffff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:.2s ease;color:#0f172a;position:relative;padding:8px;box-shadow:0 4px 10px rgba(0,0,0,0.03)}
+.vm-node:hover{transform:translateY(-3px);box-shadow:0 8px 16px rgba(0,0,0,0.06)}
 .vm-node.av{background:linear-gradient(135deg,#ffffff,#f0fdf4);border:1px solid rgba(16,185,129,0.1)}
 .vm-node.av .vm-node-n{color:#15803d}
 .vm-node.av .vm-node-s{color:#16a34a;opacity:0.7}
@@ -1185,10 +1529,7 @@ const POS_CSS = `
   .om-toggle .mode-btn{padding:6px;font-size:0;gap:0} /* Hide text in mode buttons on tiny screens */
   .cust-chip{padding:2px 6px;border-radius:6px}
   .chip-nm{font-size:9px}
-  .prod-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-  .pc-nm{font-size:10px;height:26px}
-  .pc-body{padding:10px}
-  .pc-pr{font-size:11px}
+  .prod-grid{gap:8px}
   .catalog{padding:12px}
   .cart-panel{border-radius:18px 18px 0 0}
   .cp-ft{padding:12px}
@@ -1206,7 +1547,6 @@ const POS_CSS = `
   .cp-body{max-height:none}
 }
 @media(max-width:420px){
-  .prod-grid{grid-template-columns:1fr}
   .cp-hd{padding:14px 16px}
   .cp-body{padding:14px}
   .cp-ft{padding:14px}

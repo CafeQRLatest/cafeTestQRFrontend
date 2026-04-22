@@ -6,6 +6,7 @@ import api from '../../utils/api';
 import { 
   FaHistory, FaWarehouse, FaSearch, FaArrowRight, FaArrowLeft, FaTags, FaClock
 } from 'react-icons/fa';
+import ReportTable from '../../components/ReportTable';
 
 export default function StockHistoryPage() {
   return (
@@ -125,62 +126,57 @@ function StockHistoryContent() {
           </div>
         </div>
 
-        {/* Ledger Grid */}
-        <div className="erp-table-wrapper">
-           <table className="erp-table">
-              <thead>
-                 <tr>
-                    <th><FaClock style={{marginRight:6}}/> Date / Time</th>
-                    <th>Product / Item</th>
-                    <th>Transaction Type</th>
-                    <th className="text-right">Qty Chg</th>
-                    <th className="text-right">Balance</th>
-                 </tr>
-              </thead>
-              <tbody>
-                 {filteredLedgers.length > 0 ? (
-                    filteredLedgers.map(lg => (
-                       <tr key={lg.id}>
-                          <td>
-                             <div className="dt-cell">
-                                <span className="d">{new Date(lg.transactionDate).toLocaleDateString()}</span>
-                                <span className="t">{new Date(lg.transactionDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                             </div>
-                          </td>
-                          <td>
-                             <span className="name-text">{getProductName(lg.productId)}</span>
-                          </td>
-                          <td>
-                             <div className="tx-pill">
-                                {getTransactionIcon(lg.transactionType || 'SYSTEM')}
-                                <span>{lg.transactionType || 'MANUAL'}</span>
-                                {lg.referenceType && <span className="ref-tag">{lg.referenceType}</span>}
-                             </div>
-                          </td>
-                          <td className="text-right">
-                             <span className={`qty-chg ${lg.quantityChanged > 0 ? 'pos' : lg.quantityChanged < 0 ? 'neg' : 'neu'}`}>
-                                {lg.quantityChanged > 0 ? '+' : ''}{lg.quantityChanged}
-                             </span>
-                          </td>
-                          <td className="text-right">
-                             <span className="qty-bal">{lg.quantityAfter}</span>
-                          </td>
-                       </tr>
-                    ))
-                 ) : (
-                    <tr>
-                       <td colSpan="5">
-                          <div className="empty-state">
-                             <FaHistory className="empty-icon" />
-                             <h3>No ledger records</h3>
-                             <p>This warehouse has no internal stock events recorded matching your query.</p>
-                          </div>
-                       </td>
-                    </tr>
-                 )}
-              </tbody>
-           </table>
-        </div>
+        {/* Ledger Table */}
+        <ReportTable
+          accentColor="#4f46e5"
+          columns={[
+            { 
+              key: 'transactionDate', 
+              label: 'Date / Time',
+              render: (lg) => (
+                <div className="dt-cell">
+                  <span className="d">{new Date(lg.transactionDate).toLocaleDateString()}</span>
+                  <span className="t">{new Date(lg.transactionDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+              )
+            },
+            { 
+              key: 'productId', 
+              label: 'Product / Item',
+              render: (lg) => <span className="name-text">{getProductName(lg.productId)}</span>
+            },
+            { 
+              key: 'transactionType', 
+              label: 'Transaction Type',
+              render: (lg) => (
+                <div className="tx-pill">
+                  {getTransactionIcon(lg.transactionType || 'SYSTEM')}
+                  <span>{lg.transactionType || 'MANUAL'}</span>
+                  {lg.referenceType && <span className="ref-tag">{lg.referenceType}</span>}
+                </div>
+              )
+            },
+            { 
+              key: 'quantityChanged', 
+              label: 'Qty Chg', 
+              align: 'right',
+              render: (lg) => (
+                <span className={`qty-chg ${lg.quantityChanged > 0 ? 'pos' : lg.quantityChanged < 0 ? 'neg' : 'neu'}`}>
+                  {lg.quantityChanged > 0 ? '+' : ''}{lg.quantityChanged}
+                </span>
+              )
+            },
+            { 
+              key: 'quantityAfter', 
+              label: 'Balance', 
+              align: 'right',
+              render: (lg) => <span className="qty-bal">{lg.quantityAfter}</span>
+            }
+          ]}
+          data={filteredLedgers}
+          emptyTitle="No ledger records"
+          emptyText="This warehouse has no internal stock events recorded matching your query."
+        />
 
       </div>
 
@@ -200,11 +196,6 @@ function StockHistoryContent() {
         .search-intelligence input { width: 100%; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px 12px 12px 48px; border-radius: 12px; font-size: 14px; font-weight: 600; color: #1e293b; transition: 0.2s; }
         .search-intelligence input:focus { outline: none; border-color: #4f46e5; background: white; box-shadow: 0 0 0 4px #e0e7ff; }
 
-        .erp-table-wrapper { background: white; border-radius: 20px; border: 1px solid #edf2f7; padding: 24px; overflow-x: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.02); }
-        .erp-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 700px; }
-        .erp-table th { text-align: left; padding: 0 16px 16px; font-size: 11px; font-weight: 800; color: #94a3b8; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; }
-        .erp-table td { padding: 16px; border-bottom: 1px solid #f8fafc; vertical-align: middle; }
-        
         .dt-cell { display: flex; flex-direction: column; gap: 2px; }
         .dt-cell .d { font-weight: 700; color: #1e293b; font-size: 13px; }
         .dt-cell .t { font-weight: 600; color: #94a3b8; font-size: 11px; }
@@ -225,11 +216,6 @@ function StockHistoryContent() {
 
         .qty-bal { font-size: 16px; font-weight: 900; color: #1e293b; }
         .text-right { text-align: right; }
-
-        .empty-state { padding: 60px 0; text-align: center; color: #94a3b8; }
-        .empty-icon { font-size: 40px; color: #e2e8f0; margin-bottom: 16px; }
-        .empty-state h3 { font-size: 18px; font-weight: 800; color: #1e293b; margin: 0 0 8px; }
-        .empty-state p { font-size: 13px; margin: 0; }
         
         .loading-state-premium { height: 100vh; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #64748b; }
       `}</style>

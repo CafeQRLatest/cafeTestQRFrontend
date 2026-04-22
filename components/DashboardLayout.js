@@ -523,6 +523,7 @@ function Sidebar({ collapsed, menus = [], config, onToggle }) {
     "Partners":         <FaUserFriends />,
     "Purchase Orders":  <FaShoppingCart />,
     "Table Management": <FaChair />,
+    "Expenses":         <FaReceipt />,
   };
 
   // Group by Parent and Filter out Point of Sale & Table Management if disabled
@@ -622,6 +623,7 @@ function MobileSidebar({ onNavigate, menus = [], config }) {
     "Partners":         <FaUserFriends />,
     "Purchase Orders":  <FaShoppingCart />,
     "Table Management": <FaChair />,
+    "Expenses":         <FaReceipt />,
   };
 
   const parentMenus = menus.filter(m => {

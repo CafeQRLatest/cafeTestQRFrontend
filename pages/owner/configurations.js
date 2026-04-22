@@ -49,6 +49,7 @@ const MODULES = [
   },
   { key: 'pm_loyalty',          icon: <FaTags />,        title: 'Loyalty',           desc: 'Points & rewards program',                  color: '#ef4444' },
   { key: 'pm_pos_product_listing', icon: <FaSearch />,   title: 'POS Product Listing', desc: 'Enable product grid in sales screen',       color: '#059669' },
+  { key: 'pm_discount',         icon: <FaTags />,        title: 'Enable Discounts',  desc: 'Allow order and item discounts',            color: '#f59e0b' },
   { key: 'pm_send_to_kitchen',  icon: <FaUtensils />,    title: 'Send to Kitchen',   desc: 'Forward orders to kitchen display',         color: '#22c55e' },
   { key: 'pm_online_delivery',  icon: <FaTruck />,       title: 'Online Delivery',   desc: 'Enable delivery ordering',                  color: '#06b6d4' },
 ];
@@ -105,6 +106,7 @@ function ConfigurationsContent() {
     ro_enabled: false, ro_mode: 'automatic', ro_auto_factor: 1.0, ro_manual_limit: 10.0,
     bill_footer: '',
     pm_pos_product_listing: true,
+    pm_discount: true,
     print_logo_bitmap: null, print_logo_cols: null, print_logo_rows: null,
     
     // Hardware & paper (New)
@@ -195,6 +197,7 @@ function ConfigurationsContent() {
             ro_auto_factor: d.roundOffAutoFactor ?? 1.0, ro_manual_limit: d.roundOffManualLimit ?? 10.0,
             bill_footer: d.billFooter || '',
             pm_pos_product_listing: d.posProductListingEnabled !== false,
+            pm_discount: d.discountEnabled !== false,
             print_logo_bitmap: d.printLogoBitmap || null,
             print_logo_cols: d.printLogoCols || null,
             print_logo_rows: d.printLogoRows || null,
@@ -268,6 +271,7 @@ function ConfigurationsContent() {
         roundOffAutoFactor: Number(config.ro_auto_factor), roundOffManualLimit: Number(config.ro_manual_limit),
         billFooter: config.bill_footer || '',
         posProductListingEnabled: config.pm_pos_product_listing,
+        discountEnabled: config.pm_discount,
         printLogoBitmap: config.print_logo_bitmap,
         printLogoCols: config.print_logo_cols,
         printLogoRows: config.print_logo_rows,
@@ -781,9 +785,9 @@ function ConfigurationsContent() {
         .segmented-tab {
            flex: 1; min-width: max-content;
            display: flex; align-items: center; justify-content: center; gap: 10px;
-           padding: 14px 20px;
+           padding: 10px 16px;
            background: transparent; border: none; border-radius: 12px;
-           font-size: 15px; font-weight: 700; color: #64748b;
+           font-size: 14px; font-weight: 700; color: #64748b;
            cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
            font-family: inherit;
         }
@@ -804,8 +808,8 @@ function ConfigurationsContent() {
         /* ─── CARDS & GRID ─── */
         .dense-grid { 
            display: grid; 
-           grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); 
-           gap: 20px; 
+           grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); 
+           gap: 12px; 
         }
 
         .module-wrapper {
@@ -826,15 +830,15 @@ function ConfigurationsContent() {
         }
         
         .menu-box {
-          padding: 24px;
-          display: flex; align-items: center; gap: 18px;
+          padding: 12px;
+          display: flex; align-items: center; gap: 12px;
           cursor: pointer; position: relative; z-index: 2;
         }
         
         .box-icon {
-          width: 52px; height: 52px; border-radius: 14px;
+          width: 36px; height: 36px; border-radius: 10px;
           display: flex; align-items: center; justify-content: center;
-          font-size: 24px; flex-shrink: 0; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          font-size: 16px; flex-shrink: 0; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .is-active .box-icon {
            box-shadow: 0 8px 16px rgba(0,0,0,0.15), inset 0 2px 4px rgba(255,255,255,0.3);
@@ -842,13 +846,13 @@ function ConfigurationsContent() {
         }
         
         .box-content { flex: 1; }
-        .box-content h3 { margin: 0; font-size: 16.5px; font-weight: 800; color: #0f172a; transition: color 0.2s;}
-        .box-content p { margin: 4px 0 0; font-size: 13.5px; color: #64748b; line-height: 1.45; font-weight: 500; }
+        .box-content h3 { margin: 0; font-size: 13.5px; font-weight: 800; color: #0f172a; transition: color 0.2s;}
+        .box-content p { margin: 2px 0 0; font-size: 11.5px; color: #64748b; line-height: 1.3; font-weight: 500; }
 
         .sub-box {
            position: relative; z-index: 1;
-           padding: 0 24px 16px 94px; /* Align with text perfectly */
-           display: flex; align-items: center; justify-content: space-between; gap: 16px;
+           padding: 0 12px 12px 60px; /* Align with text perfectly */
+           display: flex; align-items: center; justify-content: space-between; gap: 10px;
            animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
            cursor: pointer;
         }
@@ -858,7 +862,7 @@ function ConfigurationsContent() {
         @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
         .sub-connecting-line {
-           position: absolute; left: 50px; top: -14px; bottom: 32px;
+           position: absolute; left: 30px; top: -14px; bottom: 32px;
            width: 3px; background: #fed7aa; border-radius: 4px; z-index: 0;
         }
         .sub-box .box-content h3 { font-size: 14.5px; color: #334155; }
@@ -866,9 +870,9 @@ function ConfigurationsContent() {
 
         /* ─── FORM CARD ─── */
         .form-card {
-           background: white; border-radius: 20px; border: 1px solid #e2e8f0;
-           padding: 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.02);
-           display: flex; flex-direction: column; gap: 32px;
+           background: white; border-radius: 16px; border: 1px solid #e2e8f0;
+           padding: 18px; box-shadow: 0 4px 16px rgba(0,0,0,0.02);
+           display: flex; flex-direction: column; gap: 18px;
            max-width: 900px; /* Don't stretch simple forms to infinity */
         }
         .form-card.full-width { max-width: 100%; }
@@ -917,7 +921,7 @@ function ConfigurationsContent() {
 
         /* ─── TOGGLE ─── */
         .toggle-switch {
-           width: 48px; height: 28px; background: #e2e8f0;
+           width: 36px; height: 20px; background: #e2e8f0;
            border-radius: 99px; position: relative; transition: all 0.3s;
            flex-shrink: 0; cursor: pointer;
            box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
@@ -925,11 +929,11 @@ function ConfigurationsContent() {
         .toggle-switch.on { background: #10b981; } /* Subtler green or keep f97316? Let's use f97316 */
         .toggle-switch.on { background: #f97316; }
         .toggle-thumb {
-           width: 20px; height: 20px; background: white; border-radius: 50%;
-           position: absolute; top: 4px; left: 4px; transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+           width: 14px; height: 14px; background: white; border-radius: 50%;
+           position: absolute; top: 3px; left: 3px; transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
         }
-        .toggle-switch.on .toggle-thumb { transform: translateX(20px); }
+        .toggle-switch.on .toggle-thumb { transform: translateX(16px); }
         .toggle-switch.small { width: 40px; height: 24px; }
         .toggle-switch.small .toggle-thumb { width: 16px; height: 16px; top: 4px; left: 4px; }
         .toggle-switch.small.on .toggle-thumb { transform: translateX(16px); }
