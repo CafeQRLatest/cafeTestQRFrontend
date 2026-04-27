@@ -20,12 +20,12 @@ export const AuthProvider = ({ children }) => {
   const [userId, setUserId] = useState(null);
   const [currency, setCurrency] = useState(null);
   const [country, setCountry] = useState(null);
+  const [timezone, setTimezone] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     // Check for session metadata in cookies 
-    // access_token and refresh_token are HttpOnly, so we can't see them directly
     const storedRole = Cookies.get('userRole');
     const storedEmail = Cookies.get('userEmail');
     const storedFirstName = Cookies.get('firstName');
@@ -40,6 +40,7 @@ export const AuthProvider = ({ children }) => {
     const storedUserId = Cookies.get('userId');
     const storedCurrency = Cookies.get('currency');
     const storedCountry = Cookies.get('country');
+    const storedTimezone = Cookies.get('timezone');
     
     if (storedEmail) setEmail(storedEmail);
     if (storedFirstName) setFirstName(storedFirstName);
@@ -54,6 +55,7 @@ export const AuthProvider = ({ children }) => {
     if (storedUserId) setUserId(storedUserId);
     if (storedCurrency) setCurrency(storedCurrency);
     if (storedCountry) setCountry(storedCountry);
+    if (storedTimezone) setTimezone(storedTimezone);
     
     if (storedExpiry) {
       try {
@@ -62,6 +64,17 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {
         setSubscriptionExpiryDate(storedExpiry);
       }
+    }
+
+    // Auto-fetch timezone and other missing details if authenticated
+    if (storedEmail && !storedTimezone) {
+      api.get('/api/v1/clients/me').then(res => {
+        if (res.data.success) {
+          const tz = res.data.data.timezone || 'UTC+5:30 (India)';
+          setTimezone(tz);
+          Cookies.set('timezone', tz, { expires: 7, secure: true, sameSite: 'strict', path: '/' });
+        }
+      }).catch(err => console.error("Tz fetch error", err));
     }
     
     setLoading(false);
@@ -72,6 +85,7 @@ export const AuthProvider = ({ children }) => {
     const userEmail = data.email;
     const status = (data.subscriptionStatus || data.subscription_status || '').toUpperCase();
     let expiry = data.subscriptionExpiryDate || data.subscription_expiry_date;
+    const tz = data.timezone || 'UTC+5:30 (India)';
     
     if (Array.isArray(expiry)) {
       expiry = new Date(expiry[0], expiry[1]-1, expiry[2], expiry[3]||0, expiry[4]||0).toISOString();
@@ -91,6 +105,7 @@ export const AuthProvider = ({ children }) => {
     setUserId(data.userId || null);
     setCurrency(data.currency || null);
     setCountry(data.country || null);
+    setTimezone(tz);
     
     // Metadata cookies (Non-HttpOnly) for frontend logic
     const cookieOptions = { expires: 7, secure: true, sameSite: 'strict', path: '/' };
@@ -117,6 +132,7 @@ export const AuthProvider = ({ children }) => {
     if (data.userId) Cookies.set('userId', data.userId, cookieOptions);
     if (data.currency) Cookies.set('currency', data.currency, cookieOptions);
     if (data.country) Cookies.set('country', data.country, cookieOptions);
+    Cookies.set('timezone', tz, cookieOptions);
   };
 
   const logout = async () => {
@@ -135,6 +151,7 @@ export const AuthProvider = ({ children }) => {
     setUserId(null);
     setCurrency(null);
     setCountry(null);
+    setTimezone(null);
     
     // Clear cookies with explicit path
     const removeOptions = { path: '/' };
@@ -154,14 +171,13 @@ export const AuthProvider = ({ children }) => {
     Cookies.remove('userId', removeOptions);
     Cookies.remove('currency', removeOptions);
     Cookies.remove('country', removeOptions);
+    Cookies.remove('timezone', removeOptions);
     
     try {
-      // Attempt to notify backend, but don't block the UI
       await api.post('/api/v1/auth/logout');
     } catch (err) {
       console.error("Logout backend notification failed:", err);
     } finally {
-      // Always redirect to login
       router.push('/login');
     }
   };
@@ -176,7 +192,6 @@ export const AuthProvider = ({ children }) => {
       if (dateStr.includes(' ') && !dateStr.includes('T')) {
         dateStr = dateStr.replace(' ', 'T');
       }
-      // Truncate micro
       const dotIndex = dateStr.indexOf('.');
       if (dotIndex !== -1) {
         const fraction = dateStr.substring(dotIndex + 1);
@@ -226,6 +241,7 @@ export const AuthProvider = ({ children }) => {
       fullName: firstName ? `${firstName} ${lastName || ''}`.trim() : null,
       currency,
       country,
+      timezone,
       loading 
     }}>
       {!loading && children}

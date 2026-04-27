@@ -26,14 +26,13 @@ export default function GlobalUI() {
       {modal && (
         <div className="modal-overlay" onClick={() => modal.onCancel()}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className={`modal-header-accent ${modal.type || 'warning'}`}></div>
             <div className="modal-body">
-              <div className="modal-icon-big">
+              <div className="modal-icon-small">
                 {modal.type === 'error' ? <FaExclamationCircle className="error" /> : 
                  modal.type === 'info' ? <FaInfoCircle className="info" /> : 
                  <FaExclamationTriangle className="warning" />}
               </div>
-              <h2>{modal.title}</h2>
+              <h3>{modal.title}</h3>
               <p>{modal.message}</p>
             </div>
             <div className="modal-footer">
@@ -60,18 +59,18 @@ export default function GlobalUI() {
         }
 
         .custom-toast {
-          padding: 16px 24px;
-          background: #1e293b;
+          padding: 14px 20px;
+          background: #0f172a;
           color: white;
-          border-radius: 16px;
+          border-radius: 12px;
           display: flex;
           align-items: center;
-          gap: 14px;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+          gap: 12px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.1);
           animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           pointer-events: auto;
-          min-width: 300px;
-          max-width: 450px;
+          min-width: 280px;
+          max-width: 400px;
         }
 
         @keyframes slideInRight {
@@ -79,26 +78,23 @@ export default function GlobalUI() {
           to { transform: translateX(0); opacity: 1; }
         }
 
-        .custom-toast.success { border-left: 4px solid #10b981; }
-        .custom-toast.error { border-left: 4px solid #ef4444; }
-        .custom-toast.warning { border-left: 4px solid #f97316; }
+        .custom-toast.success { border-left: 3px solid #10b981; }
+        .custom-toast.error { border-left: 3px solid #ef4444; }
+        .custom-toast.warning { border-left: 3px solid #f97316; }
 
-        .toast-icon { font-size: 20px; }
+        .toast-icon { font-size: 18px; }
         .success .toast-icon { color: #10b981; }
         .error .toast-icon { color: #ef4444; }
         .warning .toast-icon { color: #f97316; }
 
-        .toast-content { font-size: 14px; font-weight: 700; }
+        .toast-content { font-size: 13px; font-weight: 600; }
 
         /* Modal Styles */
         .modal-overlay {
           position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(15, 23, 42, 0.4);
-          backdrop-filter: blur(8px);
+          inset: 0;
+          background: rgba(15, 23, 42, 0.05);
+          backdrop-filter: blur(6px);
           z-index: 10000;
           display: flex;
           align-items: center;
@@ -115,103 +111,100 @@ export default function GlobalUI() {
         .modal-box {
           background: white;
           width: 100%;
-          max-width: 440px;
-          border-radius: 28px;
+          max-width: 360px;
+          border-radius: 20px;
           position: relative;
           overflow: hidden;
-          box-shadow: 0 40px 100px rgba(0,0,0,0.2);
-          animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+          box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+          border: 1px solid #e2e8f0;
+          border-top: 3px solid #f97316;
+          animation: popUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        @keyframes scaleUp {
-          from { transform: scale(0.9); opacity: 0; }
+        @keyframes popUp {
+          from { transform: scale(0.95); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
 
-        .modal-header-accent { height: 6px; width: 100%; }
-        .modal-header-accent.warning { background: #f97316; }
-        .modal-header-accent.error { background: #ef4444; }
-        .modal-header-accent.info { background: #3b82f6; }
-
         .modal-body {
-          padding: 40px 32px 32px;
+          padding: 32px 24px 24px;
           text-align: center;
         }
 
-        .modal-icon-big { font-size: 56px; margin-bottom: 24px; }
-        .modal-icon-big .warning { color: #f97316; }
-        .modal-icon-big .error { color: #ef4444; }
-        .modal-icon-big .info { color: #3b82f6; }
+        .modal-icon-small { font-size: 32px; margin-bottom: 16px; opacity: 0.8; }
+        .modal-icon-small .warning { color: #f97316; }
+        .modal-icon-small .error { color: #ef4444; }
+        .modal-icon-small .info { color: #3b82f6; }
 
-        .modal-body h2 { 
-          margin: 0 0 12px; 
-          font-size: 22px; 
-          font-weight: 950; 
+        .modal-body h3 { 
+          margin: 0 0 8px; 
+          font-size: 16px; 
+          font-weight: 800; 
           color: #0f172a; 
-          letter-spacing: -0.5px;
+          letter-spacing: -0.3px;
         }
 
         .modal-body p { 
           margin: 0; 
-          font-size: 15px; 
-          color: #64748b; 
-          line-height: 1.6; 
-          font-weight: 600;
+          font-size: 13px; 
+          color: #94a3b8; 
+          line-height: 1.5; 
+          font-weight: 500;
         }
 
         .modal-footer {
-          padding: 0 32px 32px;
+          padding: 0 24px 24px;
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 16px;
+          gap: 10px;
         }
 
         .btn-cancel {
-          padding: 14px;
-          border-radius: 16px;
-          border: 1px solid #e2e8f0;
-          background: #f8fafc;
-          color: #64748b;
-          font-weight: 800;
-          font-size: 14px;
+          padding: 10px;
+          border-radius: 12px;
+          border: 1px solid #f1f5f9;
+          background: #fff;
+          color: #94a3b8;
+          font-weight: 700;
+          font-size: 12px;
           cursor: pointer;
           transition: 0.2s;
         }
-        .btn-cancel:hover { background: #f1f5f9; color: #1e293b; }
+        .btn-cancel:hover { background: #f8fafc; color: #64748b; border-color: #e2e8f0; }
 
         .btn-confirm {
-          padding: 14px;
-          border-radius: 16px;
-          border: none;
+          padding: 10px;
+          border-radius: 12px;
           color: white;
-          font-weight: 800;
-          font-size: 14px;
+          font-weight: 700;
+          font-size: 12px;
           cursor: pointer;
           transition: 0.2s;
         }
-        .btn-confirm.warning { background: #f97316; box-shadow: 0 8px 20px rgba(249,115,22,0.25); }
+        .btn-confirm.warning { background: #f97316; border: 1px solid #ea580c; }
         .btn-confirm.warning:hover { background: #ea580c; transform: translateY(-1px); }
         
-        .btn-confirm.error { background: #ef4444; box-shadow: 0 8px 20px rgba(239,68,68,0.25); }
+        .btn-confirm.error { background: #ef4444; border: 1px solid #dc2626; }
         .btn-confirm.error:hover { background: #dc2626; transform: translateY(-1px); }
 
         .modal-close-x {
           position: absolute;
-          top: 16px;
-          right: 16px;
-          width: 32px;
-          height: 32px;
+          top: 12px;
+          right: 12px;
+          width: 24px;
+          height: 24px;
           border: none;
-          background: #f1f5f9;
-          color: #94a3b8;
+          background: #f8fafc;
+          color: #cbd5e1;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
           transition: 0.2s;
+          font-size: 10px;
         }
-        .modal-close-x:hover { background: #e2e8f0; color: #475569; }
+        .modal-close-x:hover { background: #f1f5f9; color: #ef4444; }
       `}</style>
     </>
   );

@@ -611,7 +611,7 @@ function TransferContent() {
 
         /* Draft Modal */
         .draft-modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .draft-modal { background: white; width: 100%; max-width: 500px; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); overflow: hidden; }
+        .draft-modal { background: white; width: 100%; max-width: 500px; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); overflow: hidden; border: 1px solid #e2e8f0; border-top: 3px solid #f97316; }
         .modal-head { padding: 16px 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
         .modal-head h3 { font-size: 16px; font-weight: 800; color: #0f172a; margin: 0; }
         .modal-body { padding: 12px; max-height: 400px; overflow-y: auto; }

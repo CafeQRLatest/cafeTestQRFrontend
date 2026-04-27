@@ -8,7 +8,7 @@ import {
   FaExpand, FaCompress, FaSignOutAlt, FaBell, FaArrowLeft, FaUserCog, FaChevronDown, FaBuilding, FaDesktop, FaCrown,
   FaHome, FaBars, FaBookOpen, FaUtensils, FaCashRegister, FaBoxes, FaClock, FaIndustry, FaTruck, FaIdBadge, 
   FaCheckCircle, FaExclamationCircle, FaSave, FaCalculator, FaChartBar, FaFileInvoice, FaPlus, FaTimes, 
-  FaCamera, FaReceipt, FaTags, FaFilter, FaUsers, FaCog, FaChartLine, FaCreditCard, FaUserFriends, FaShoppingCart, FaChair
+  FaCamera, FaReceipt, FaTags, FaFilter, FaUsers, FaCog, FaChartLine, FaCreditCard, FaUserFriends, FaShoppingCart, FaChair, FaRecycle
 } from 'react-icons/fa';
 
 /**
@@ -524,6 +524,7 @@ function Sidebar({ collapsed, menus = [], config, onToggle }) {
     "Purchase Orders":  <FaShoppingCart />,
     "Table Management": <FaChair />,
     "Expenses":         <FaReceipt />,
+    "Waste Management": <FaRecycle />,
   };
 
   // Group by Parent and Filter out Point of Sale & Table Management if disabled
@@ -624,6 +625,7 @@ function MobileSidebar({ onNavigate, menus = [], config }) {
     "Purchase Orders":  <FaShoppingCart />,
     "Table Management": <FaChair />,
     "Expenses":         <FaReceipt />,
+    "Waste Management": <FaRecycle />,
   };
 
   const parentMenus = menus.filter(m => {

@@ -120,17 +120,7 @@ function ClientProfileContent() {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-        for (let i = 0; i < data.length; i += 4) {
-          const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-          data[i] = avg;
-          data[i + 1] = avg;
-          data[i + 2] = avg;
-        }
-        ctx.putImageData(imageData, 0, 0);
-
-        const base64 = canvas.toDataURL('image/png', 0.8);
+        const base64 = canvas.toDataURL('image/png', 0.9);
         setFormData(prev => ({ ...prev, logoUrl: base64 }));
       };
       img.src = event.target.result;

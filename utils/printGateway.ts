@@ -333,29 +333,36 @@ async function printUniversalNow(opts: Options) {
       throw new Error('NO_PRINTER_CONFIGURED');
     }
 
-    // 5) Browser fallbacks
-    const w = window.open('', '_blank', 'width=480,height=640');
-    if (w) {
-      w.document.write(
-        `<pre style="font:14px/1.4 monospace; white-space:pre-wrap">${opts.text.replace(/</g, '&lt;')}</pre>`
-      );
-      w.document.close();
-      w.focus();
+    // 5) Browser fallbacks (Hidden Iframe for reliability)
+    const frameId = 'print-iframe-' + Date.now();
+    let iframe = document.getElementById(frameId);
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = frameId;
+      iframe.style.position = 'absolute';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+    }
 
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          try {
-            if (w && !w.closed) {
-              w.print();
-              w.close();
-            }
-          } catch (err) {
-            console.warn('[print] Failed to print window:', err);
-          }
-          resolve();
-        }, 250);
-      });
-
+    const doc = iframe && (iframe.contentWindow ? iframe.contentWindow.document : iframe.contentDocument);
+    if (doc) {
+      doc.open();
+      doc.write(`
+        <html>
+          <body style="margin:0; padding:10px; font-family:monospace; white-space:pre-wrap; font-size:14px;">
+            ${opts.text.replace(/</g, '&lt;')}
+          </body>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(() => { window.parent.document.body.removeChild(window.frameElement); }, 1000);
+            };
+          </script>
+        </html>
+      `);
+      doc.close();
       return { via: 'system' as const };
     }
 

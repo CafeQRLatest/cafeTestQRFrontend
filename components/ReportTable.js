@@ -66,10 +66,11 @@ export default function ReportTable({
         .table-container {
           width: 100%;
           overflow-x: auto;
-          border-radius: 12px;
-          border: 1px solid #e5e7eb;
           background: white;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+          padding: 8px 0;
         }
         .premium-table {
           width: 100%;
@@ -79,28 +80,28 @@ export default function ReportTable({
           min-width: 700px;
         }
         .premium-table th {
-          padding: 14px 20px;
-          background: linear-gradient(to bottom, #ffffff 0%, #f9fafb 100%);
-          color: #1f2937;
-          font-weight: 800;
-          font-size: 11px;
+          padding: 12px 20px;
+          background: #f8fafc;
+          color: #64748b;
+          font-weight: 700;
+          font-size: 10px;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
-          border-bottom: 2px solid ${accentColor};
+          letter-spacing: 0.08em;
+          border-bottom: 1px solid #f1f5f9;
           white-space: nowrap;
         }
         .premium-table td {
-          padding: 16px 20px;
-          border-bottom: 1px solid #f3f4f6;
-          color: #374151;
+          padding: 14px 20px;
+          border-bottom: 1px solid #f8fafc;
+          color: #1e293b;
           vertical-align: middle;
-          font-weight: 600;
+          font-weight: 500;
+        }
+        .premium-table tbody tr:hover {
+          background-color: #f8fafc;
         }
         .premium-table tbody tr:last-child td {
           border-bottom: none;
-        }
-        .premium-table tbody tr:hover {
-          background-color: #fafafa;
         }
         .rt-right { text-align: right; }
         .rt-center { text-align: center; }
@@ -114,27 +115,27 @@ export default function ReportTable({
         }
         .empty-icon {
           font-size: 40px;
-          color: #e5e7eb;
+          color: #e2e8f0;
           margin-bottom: 16px;
         }
         .empty-cell h3 {
           margin: 0 0 8px;
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 800;
-          color: #1f2937;
+          color: #475569;
         }
         .empty-cell p {
           margin: 0;
-          font-size: 13px;
-          color: #9ca3af;
+          font-size: 12px;
+          color: #94a3b8;
         }
         
         tfoot td {
           padding: 16px 20px;
-          background: #f9fafb;
-          border-top: 2px solid #e5e7eb;
+          background: #f8fafc;
+          border-top: 1px solid #e2e8f0;
           font-weight: 800;
-          color: #111827;
+          color: #0f172a;
         }
       `}</style>
     </div>

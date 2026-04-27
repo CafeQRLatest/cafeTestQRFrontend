@@ -1455,6 +1455,7 @@ const MAIN_CSS = `
     background:white; width:100%; max-width:480px; border-radius:16px;
     box-shadow:0 24px 60px rgba(0,0,0,0.2); overflow:hidden;
     animation:modalIn 0.25s cubic-bezier(0.23,1,0.32,1);
+    border: 1px solid #e2e8f0; border-top: 3px solid #f97316;
   }
   .confirm-box { max-width:380px; }
   @keyframes modalIn  { from{opacity:0;transform:scale(0.95) translateY(10px)} to{opacity:1;transform:none} }

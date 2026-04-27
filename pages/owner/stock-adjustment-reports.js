@@ -24,8 +24,13 @@ function AdjustmentReportContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [reasonFilter, setReasonFilter] = useState('ALL');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const getTodayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const [dateFrom, setDateFrom] = useState(getTodayStr());
+  const [dateTo, setDateTo] = useState(getTodayStr());
 
   useEffect(() => {
     fetchData();

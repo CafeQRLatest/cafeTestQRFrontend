@@ -1,19 +1,86 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaCalendarAlt, FaClock, FaChevronLeft, FaChevronRight, FaChevronDown } from 'react-icons/fa';
+import { FaCalendarAlt, FaClock, FaChevronLeft, FaChevronRight, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { useAuth } from '../context/AuthContext';
 
 export default function PremiumDateTimePicker({ value, onChange, themeColor = '#f97316' }) {
+  const { timezone } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [viewDate, setViewDate] = useState(new Date(value || new Date()));
-  const [selectedDate, setSelectedDate] = useState(new Date(value || new Date()));
+  const [viewDate, setViewDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [inputValue, setInputValue] = useState('');
   const wrapperRef = useRef(null);
 
+  // Helper to get time in business timezone
+  const getBusinessNow = () => {
+    const now = new Date();
+    if (!timezone) return now;
+
+    try {
+      // Extract offset from format "UTC+5:30 (India)" or "UTC-4:00"
+      const match = timezone.match(/UTC([+-])(\d+):(\d+)/);
+      if (match) {
+        const sign = match[1] === '+' ? 1 : -1;
+        const hours = parseInt(match[2]);
+        const mins = parseInt(match[3]);
+        const targetOffset = sign * (hours * 60 + mins);
+        
+        // Local offset in minutes (e.g. IST is -330)
+        const localOffset = -now.getTimezoneOffset();
+        const diff = targetOffset - localOffset;
+        
+        return new Date(now.getTime() + diff * 60000);
+      }
+    } catch (e) { console.error("Tz parse error", e); }
+    return now;
+  };
+
+  const getLocalISO = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const formatDate = (date) => {
+    if (!date || isNaN(date.getTime())) return '';
+    return date.toLocaleString([], { 
+      day: '2-digit', 
+      month: 'short', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   useEffect(() => {
-    if (value) {
+    if (value && value.length > 5) {
       const d = new Date(value);
+      if (!isNaN(d.getTime())) {
+        setSelectedDate(d);
+        if (viewDate.getMonth() !== d.getMonth() || viewDate.getFullYear() !== d.getFullYear()) {
+          setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
+        }
+        setInputValue(formatDate(d));
+      }
+    } else {
+      const d = getBusinessNow();
       setSelectedDate(d);
       setViewDate(new Date(d.getFullYear(), d.getMonth(), 1));
+      setInputValue(formatDate(d));
     }
-  }, [value]);
+  }, [value, timezone]);
+
+  const handleSetNow = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const now = getBusinessNow();
+    setSelectedDate(now);
+    setViewDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    if (onChange) onChange(getLocalISO(now));
+    setIsOpen(false);
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -25,24 +92,26 @@ export default function PremiumDateTimePicker({ value, onChange, themeColor = '#
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const formatDate = (date) => {
-    return date.toLocaleString([], { 
-      day: '2-digit', 
-      month: 'short', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const handleInputChange = (e) => {
+    setInputValue(e.target.value);
+    const parsed = new Date(e.target.value);
+    if (!isNaN(parsed.getTime())) {
+      setSelectedDate(parsed);
+      setViewDate(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+      if (onChange) onChange(getLocalISO(parsed));
+    }
   };
 
   const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
 
-  const handlePrevMonth = () => {
+  const handlePrevMonth = (e) => {
+    e.preventDefault(); e.stopPropagation();
     setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
   };
 
-  const handleNextMonth = () => {
+  const handleNextMonth = (e) => {
+    e.preventDefault(); e.stopPropagation();
     setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
   };
 
@@ -52,15 +121,26 @@ export default function PremiumDateTimePicker({ value, onChange, themeColor = '#
     newDate.setMonth(viewDate.getMonth());
     newDate.setDate(day);
     setSelectedDate(newDate);
-    if (onChange) onChange(newDate.toISOString().slice(0, 16));
+    if (onChange) onChange(getLocalISO(newDate));
   };
 
-  const updateTime = (type, val) => {
+  const adjustTime = (e, type, delta) => {
+    e.preventDefault(); e.stopPropagation();
     const newDate = new Date(selectedDate);
-    if (type === 'h') newDate.setHours(parseInt(val));
-    if (type === 'm') newDate.setMinutes(parseInt(val));
+    if (type === 'h') newDate.setHours(newDate.getHours() + delta);
+    if (type === 'm') newDate.setMinutes(newDate.getMinutes() + delta);
     setSelectedDate(newDate);
-    if (onChange) onChange(newDate.toISOString().slice(0, 16));
+    if (onChange) onChange(getLocalISO(newDate));
+  };
+
+  const toggleAMPM = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const newDate = new Date(selectedDate);
+    const hour = newDate.getHours();
+    if (hour >= 12) newDate.setHours(hour - 12);
+    else newDate.setHours(hour + 12);
+    setSelectedDate(newDate);
+    if (onChange) onChange(getLocalISO(newDate));
   };
 
   const daysInMonth = getDaysInMonth(viewDate.getFullYear(), viewDate.getMonth());
@@ -68,24 +148,33 @@ export default function PremiumDateTimePicker({ value, onChange, themeColor = '#
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const blanks = Array.from({ length: firstDay }, (_, i) => i);
 
-  const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
-  const minutes = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+  const currentHour24 = selectedDate.getHours();
+  const displayHour = currentHour24 % 12 || 12;
+  const isPM = currentHour24 >= 12;
+  const displayMin = String(selectedDate.getMinutes()).padStart(2, '0');
 
   return (
     <div className="premium-dt-picker" ref={wrapperRef}>
       <div className={`dt-trigger ${isOpen ? 'active' : ''}`} onClick={() => setIsOpen(!isOpen)}>
         <FaCalendarAlt className="dt-icon" />
-        <span className="dt-value">{formatDate(selectedDate)}</span>
+        <input 
+          className="dt-input" 
+          value={inputValue} 
+          onChange={handleInputChange} 
+          onClick={(e) => { e.stopPropagation(); setIsOpen(true); }}
+          placeholder="Select date & time…"
+          readOnly={!isOpen}
+        />
         <FaChevronDown className={`dt-chevron ${isOpen ? 'up' : ''}`} />
       </div>
 
       {isOpen && (
-        <div className="dt-dropdown">
+        <div className="dt-dropdown-side" onClick={e => e.stopPropagation()}>
           <div className="dt-calendar">
             <div className="cal-hdr">
-              <button onClick={handlePrevMonth}><FaChevronLeft /></button>
+              <button type="button" onClick={handlePrevMonth}><FaChevronLeft /></button>
               <span>{viewDate.toLocaleString([], { month: 'long', year: 'numeric' })}</span>
-              <button onClick={handleNextMonth}><FaChevronRight /></button>
+              <button type="button" onClick={handleNextMonth}><FaChevronRight /></button>
             </div>
             <div className="cal-grid">
               {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
@@ -109,103 +198,99 @@ export default function PremiumDateTimePicker({ value, onChange, themeColor = '#
             </div>
           </div>
 
-          <div className="dt-time">
-            <div className="time-hdr"><FaClock /> Time Selection</div>
-            <div className="time-selectors">
-              <div className="time-col">
-                {hours.map(h => (
-                  <div 
-                    key={h} 
-                    className={`t-cell ${parseInt(h) === selectedDate.getHours() ? 'on' : ''}`}
-                    onClick={() => updateTime('h', h)}
-                  >
-                    {h}
-                  </div>
-                ))}
+          <div className="dt-time-side">
+            <div className="time-box-title">Time</div>
+            
+            <div className="time-stepper">
+              <div className="step-col">
+                <button type="button" className="step-btn" onClick={(e) => adjustTime(e, 'h', 1)}><FaChevronUp /></button>
+                <div className="step-val">{String(displayHour).padStart(2, '0')}</div>
+                <button type="button" className="step-btn" onClick={(e) => adjustTime(e, 'h', -1)}><FaChevronDown /></button>
               </div>
-              <div className="time-sep">:</div>
-              <div className="time-col">
-                {minutes.map(m => (
-                  <div 
-                    key={m} 
-                    className={`t-cell ${parseInt(m) === selectedDate.getMinutes() ? 'on' : ''}`}
-                    onClick={() => updateTime('m', m)}
-                  >
-                    {m}
-                  </div>
-                ))}
+              <div className="step-sep">:</div>
+              <div className="step-col">
+                <button type="button" className="step-btn" onClick={(e) => adjustTime(e, 'm', 1)}><FaChevronUp /></button>
+                <div className="step-val">{displayMin}</div>
+                <button type="button" className="step-btn" onClick={(e) => adjustTime(e, 'm', -1)}><FaChevronDown /></button>
+              </div>
+              <div className="ampm-toggle">
+                <button type="button" className={`ampm-p ${!isPM ? 'on' : ''}`} onClick={(e) => toggleAMPM(e)}>AM</button>
+                <button type="button" className={`ampm-p ${isPM ? 'on' : ''}`} onClick={(e) => toggleAMPM(e)}>PM</button>
               </div>
             </div>
-            <button className="now-btn" onClick={() => {
-              const n = new Date();
-              setSelectedDate(n);
-              if (onChange) onChange(n.toISOString().slice(0, 16));
-              setIsOpen(false);
-            }}>Set to Current Moment</button>
+
+            <button type="button" className="now-btn" onClick={handleSetNow}>Set Now</button>
           </div>
         </div>
       )}
 
       <style jsx>{`
-        .premium-dt-picker { position: relative; width: 100%; max-width: 240px; }
+        .premium-dt-picker { position: relative; width: 100%; user-select: none; }
         .dt-trigger {
           background: #fff;
-          border: 1px solid #e2e8f0;
-          padding: 8px 12px;
-          border-radius: 10px;
+          border: 1px solid #f1f5f9;
+          padding: 8px 14px;
+          border-radius: 12px;
           display: flex;
           align-items: center;
           gap: 10px;
           cursor: pointer;
           transition: 0.2s;
-          user-select: none;
         }
-        .dt-trigger:hover { border-color: ${themeColor}; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        .dt-trigger.active { border-color: ${themeColor}; box-shadow: 0 0 0 3px ${themeColor}20; }
-        .dt-icon { color: ${themeColor}; font-size: 12px; }
-        .dt-value { font-size: 12px; font-weight: 800; color: #000; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dt-chevron { font-size: 9px; color: #94a3b8; transition: 0.2s; }
+        .dt-trigger:hover { border-color: ${themeColor}; background: #fcfdfe; }
+        .dt-trigger.active { border-color: ${themeColor}; box-shadow: 0 0 0 3px ${themeColor}08; }
+        .dt-icon { color: ${themeColor}; font-size: 14px; opacity: 0.6; }
+        .dt-input { border: none; background: none; outline: none; font-size: 13px; font-weight: 500; color: #64748b; flex: 1; padding: 0; pointer-events: auto; width: 100%; }
+        .dt-input:focus { color: #1e293b; }
+        .dt-chevron { font-size: 10px; color: #cbd5e1; transition: 0.2s; cursor: pointer; padding: 4px; }
         .dt-chevron.up { transform: rotate(180deg); }
 
-        .dt-dropdown {
+        .dt-dropdown-side {
           position: absolute;
           top: calc(100% + 6px);
-          right: 0;
+          left: 50%;
+          transform: translateX(-50%);
           background: #fff;
           border-radius: 16px;
-          border: 1px solid #f1f5f9;
-          box-shadow: 0 15px 40px rgba(0,0,0,0.12);
+          border: 1px solid #f8fafc;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.06);
           z-index: 1000;
           display: flex;
           overflow: hidden;
-          animation: slideUp 0.15s ease-out;
+          animation: popIn 0.2s ease-out;
+          width: 360px;
         }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes popIn { from { opacity: 0; transform: translateX(-50%) translateY(4px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
-        .dt-calendar { padding: 14px; border-right: 1px solid #f1f5f9; width: 220px; }
-        .cal-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .cal-hdr span { font-weight: 800; font-size: 12px; color: #000; }
-        .cal-hdr button { border: none; background: #f8fafc; color: #000; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; font-size: 10px; }
-        .cal-hdr button:hover { background: ${themeColor}; color: #fff; }
+        .dt-calendar { padding: 14px; flex: 1; border-right: 1px solid #fcfdfe; }
+        .cal-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .cal-hdr span { font-weight: 600; font-size: 12px; color: #334155; }
+        .cal-hdr button { border: none; background: #f8fafc; color: #cbd5e1; width: 28px; height: 28px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .cal-hdr button:hover { background: ${themeColor}10; color: ${themeColor}; }
 
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
-        .day-name { font-size: 9px; font-weight: 800; color: #94a3b8; text-align: center; padding: 4px 0; }
-        .day { height: 28px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #475569; border-radius: 6px; cursor: pointer; transition: 0.2s; }
-        .day:hover:not(.empty) { background: #f1f5f9; color: #000; }
-        .day.selected { background: ${themeColor}; color: #fff; font-weight: 800; box-shadow: 0 4px 8px ${themeColor}30; }
+        .day-name { font-size: 8px; font-weight: 700; color: #e2e8f0; text-align: center; padding: 4px 0; text-transform: uppercase; }
+        .day { height: 28px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; color: #94a3b8; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        .day:hover:not(.empty) { background: #f8fafc; color: #334155; }
+        .day.selected { background: ${themeColor}; color: #fff; font-weight: 600; box-shadow: 0 4px 10px ${themeColor}15; }
         .day.empty { cursor: default; }
 
-        .dt-time { width: 130px; background: #fcfcfc; display: flex; flex-direction: column; }
-        .time-hdr { padding: 12px; font-size: 10px; font-weight: 900; color: #000; text-transform: uppercase; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 6px; }
-        .time-selectors { display: flex; flex: 1; height: 160px; }
-        .time-col { flex: 1; overflow-y: auto; scrollbar-width: none; }
-        .time-col::-webkit-scrollbar { display: none; }
-        .t-cell { height: 32px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #64748b; cursor: pointer; transition: 0.2s; }
-        .t-cell:hover { background: #f1f5f9; color: #000; }
-        .t-cell.on { color: ${themeColor}; font-weight: 900; background: ${themeColor}08; }
-        .time-sep { display: flex; align-items: center; color: #cbd5e1; font-weight: 300; font-size: 10px; }
+        .dt-time-side { width: 110px; padding: 14px; background: #fcfdfe; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .time-box-title { font-size: 8px; font-weight: 700; color: #e2e8f0; text-transform: uppercase; letter-spacing: 1px; }
         
-        .now-btn { margin: 8px; padding: 8px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #000; font-size: 10px; font-weight: 800; cursor: pointer; transition: 0.2s; }
+        .time-stepper { display: flex; flex-direction: column; align-items: center; gap: 4px; background: #fff; padding: 8px; border-radius: 12px; border: 1px solid #f8fafc; width: 100%; }
+        .step-col { display: flex; flex-direction: column; align-items: center; gap: 0; width: 100%; }
+        .step-btn { border: none; background: none; color: #e2e8f0; cursor: pointer; font-size: 12px; transition: 0.2s; padding: 8px 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+        .step-btn:hover { color: ${themeColor}; }
+        .step-btn:active { transform: scale(0.9); }
+        .step-val { font-size: 16px; font-weight: 600; color: #475569; font-variant-numeric: tabular-nums; margin: -2px 0; }
+        .step-sep { font-size: 12px; font-weight: 300; color: #e2e8f0; margin: -4px 0; }
+        
+        .ampm-toggle { display: flex; gap: 2px; background: #f8fafc; padding: 2px; border-radius: 8px; margin-top: 4px; border: 1px solid #f8fafc; width: 100%; }
+        .ampm-p { border: none; background: none; color: #cbd5e1; padding: 4px 0; border-radius: 6px; font-size: 8px; font-weight: 700; cursor: pointer; transition: 0.2s; flex: 1; text-align: center; }
+        .ampm-p.on { background: #fff; color: ${themeColor}; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        
+        .now-btn { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #f1f5f9; background: #fff; color: #94a3b8; font-size: 9px; font-weight: 600; cursor: pointer; transition: 0.2s; margin-top: auto; }
         .now-btn:hover { border-color: ${themeColor}; color: ${themeColor}; background: ${themeColor}05; }
       `}</style>
     </div>

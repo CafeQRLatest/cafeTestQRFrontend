@@ -141,24 +141,37 @@ export function calculateOrderTotals(
         i._taxAmount = i._taxableBase * (i.tax_rate / 100);
       });
     } else {
+      // "Amount" based discount distribution:
+      // Rule: For inclusive items, reduction is on Face (MRP). 
+      // For exclusive items, reduction is on Taxable Base.
+      // This ensures the "Discount: 1.00" on the bill matches the user's manual entry perfectly.
       const totalPool = discountableItems.reduce((s, i) => {
-        // Pool should always be the Face Value (Tax-Inclusive) because users enter bill discounts against the final total
-        const itemVal = i._taxableBase * (1 + (i.tax_rate / 100));
+        const isIncl = gstEnabled && (i.is_packaged_good || pricesIncludeTax);
+        // Pool is the sum of "Face Value" for inclusive and "Base Value" for exclusive
+        const itemVal = isIncl ? (i._taxableBase * (1 + i.tax_rate / 100)) : i._taxableBase;
         return s + itemVal;
       }, 0);
 
       const totalOrderDiscUnit = Math.min(discVal, totalPool);
 
       discountableItems.forEach(i => {
-        const itemVal = i._taxableBase * (1 + (i.tax_rate / 100));
+        const isIncl = gstEnabled && (i.is_packaged_good || pricesIncludeTax);
+        const itemVal = isIncl ? (i._taxableBase * (1 + i.tax_rate / 100)) : i._taxableBase;
         const shareRatio = totalPool > 0 ? (itemVal / totalPool) : 0;
         const discUnit = totalOrderDiscUnit * shareRatio;
 
-        // All bill discounts are treated as Tax-Inclusive amounts to be subtracted from the final payable
-        const itemDiscEx = discUnit / (1 + (i.tax_rate / 100));
-        i.order_discount_share = itemDiscEx;
-        i.order_discount_face_share = discUnit;
-        i._orderDiscDisplay = discUnit;
+        if (isIncl) {
+          // discUnit reduces Face (MRP)
+          const itemDiscEx = discUnit / (1 + i.tax_rate / 100);
+          i.order_discount_share = itemDiscEx;
+          i.order_discount_face_share = discUnit;
+          i._orderDiscDisplay = discUnit;
+        } else {
+          // discUnit reduces Taxable Base
+          i.order_discount_share = discUnit;
+          i.order_discount_face_share = discUnit * (1 + i.tax_rate / 100);
+          i._orderDiscDisplay = discUnit;
+        }
 
         i._taxableBase = Math.max(0, i._taxableBase - i.order_discount_share);
         i._taxAmount = i._taxableBase * (i.tax_rate / 100);
@@ -189,11 +202,13 @@ export function calculateOrderTotals(
     const isIncl = gstEnabled && (i.is_packaged_good || pricesIncludeTax);
 
     if (isIncl) {
+      // Inclusive Path: Discounted Face Value (MRP) is the absolute truth.
       const faceTarget = (i.unit_price * i.quantity) - i.line_discount_face - i.order_discount_face_share;
       total = Number(faceTarget.toFixed(2));
       taxable = Number((total / (1 + i.tax_rate / 100)).toFixed(2));
       tax = Number((total - taxable).toFixed(2));
     } else {
+      // Exclusive Path: Base + Tax is the truth.
       taxable = Number(i._taxableBase.toFixed(2));
       tax = Number(i._taxAmount.toFixed(2));
       total = Number((taxable + tax).toFixed(2));
@@ -278,9 +293,14 @@ export function calculateOrderTotals(
   return {
     line_subtotal: Number(grossFace.toFixed(2)),
     
-    discount_amount: Number((sumOrderDiscDisplay + sumLineDiscDisplay).toFixed(2)),
+    // UI facing discount amounts (Reflects the "Units" entered)
+    discount_amount: Number((sumLineDiscDisplay + sumOrderDiscDisplay).toFixed(2)),
     bill_discount_amount: Number(sumOrderDiscDisplay.toFixed(2)),
     line_discount_total: Number(sumLineDiscDisplay.toFixed(2)),
+
+    // Explicit Base/Face impact totals for background logic
+    total_order_discount_base: processedItems.reduce((s,i) => s + i.order_discount_share, 0),
+    total_line_discount_base: processedItems.reduce((s,i) => s + i.line_discount_amount, 0),
 
     round_off_amount: Number(roundOffAmount.toFixed(2)),
     total_amount: finalPayable,

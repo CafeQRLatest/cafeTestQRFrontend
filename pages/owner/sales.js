@@ -11,6 +11,9 @@ import {
 } from 'react-icons/fa';
 import { calculateOrderTotals } from '../../utils/orderCalculations';
 import ReportTable from '../../components/ReportTable';
+import { useAuth } from '../../context/AuthContext';
+import { buildReceiptText, parseDate } from '../../utils/printUtils';
+import { printUniversal } from '../../utils/printGateway';
 
 const FULFILLMENT = [
   { key: 'DINE_IN',  label: 'Dine In',  icon: <FaUtensils/>,  color: '#f97316' },
@@ -20,6 +23,9 @@ const FULFILLMENT = [
 
 export default function Sales() {
   const router = useRouter();
+  const { userRole } = useAuth();
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editingOrderNo, setEditingOrderNo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState(null);
   const [products, setProducts] = useState([]);
@@ -56,6 +62,8 @@ export default function Sales() {
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [showQuickProduct, setShowQuickProduct] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingOrderData, setEditingOrderData] = useState(null);
 
   // New Cust/Prod states
   const [customerName, setCustomerName] = useState('');
@@ -122,7 +130,8 @@ export default function Sales() {
   const fetchOrders = async () => {
     setOrdersLoading(true);
     try {
-      const r = await api.get('/api/v1/orders?status=KITCHEN,CONFIRMED');
+      const statuses = opMode === 'history' ? 'COMPLETED,PAID' : 'KITCHEN,CONFIRMED';
+      const r = await api.get(`/api/v1/orders?status=${statuses}`);
       setAllOrders(r.data.data || []);
     } catch (e) {
       console.error('Failed to fetch orders', e);
@@ -131,11 +140,49 @@ export default function Sales() {
     }
   };
 
+  const loadOrderForEdit = async (orderId) => {
+    try {
+      showToast('Loading Order...');
+      const { data: { data: order } } = await api.get(`/api/v1/orders/${orderId}`);
+      if (!order) return;
+      
+      setFulfillmentType(order.fulfillmentType);
+      setTableNumber(order.tableNumber || '');
+      setOrderTime(new Date(order.orderDate).toISOString().slice(0, 16));
+      
+      const mappedCart = order.lines.map(l => ({
+        pid: l.productId,
+        name: l.productName,
+        price: l.unitPrice,
+        qty: l.quantity,
+        tax: l.taxRate,
+        uom: l.unitOfMeasure,
+        lineDiscount: l.discountAmount || 0,
+        is_packaged: l.isPackagedGood
+      }));
+      
+      console.log('Order Data Loaded:', order);
+      setCart(mappedCart);
+      setDiscount({ type: 'amount', value: order.totalDiscountAmount || 0 });
+      setEditingOrderId(order.id);
+      setEditingOrderNo(order.orderNo);
+      setEditingOrderData({ ...order, lines: mappedCart, originalLines: JSON.parse(JSON.stringify(mappedCart)) });
+      setShowEditModal(true);
+      console.log('Modal State Set to True');
+      showToast('Order Ready for Review');
+    } catch (e) {
+      console.error('Load Order Error:', e);
+      showToast(`Load Failed: ${e.response?.data?.message || e.message}`, 'error');
+    }
+  };
+
   useEffect(() => {
-    if (opMode === 'kitchen' || opMode === 'tables') {
+    if (opMode === 'kitchen' || opMode === 'tables' || opMode === 'history') {
       fetchOrders();
-      const interval = setInterval(fetchOrders, 30000); // Auto-refresh every 30s
-      return () => clearInterval(interval);
+      if (opMode !== 'history') {
+        const interval = setInterval(fetchOrders, 30000);
+        return () => clearInterval(interval);
+      }
     }
   }, [opMode]);
 
@@ -143,6 +190,7 @@ export default function Sales() {
   const tableOn    = config?.tableManagementEnabled === true;
   const imagesOn   = config?.menuImagesEnabled === true;
   const taxOn      = config?.taxEnabled === true;
+  const taxSplitOn = config?.taxSplitEnabled === true;
   const listingOn  = config?.posProductListingEnabled !== false;
   const discountOn = config?.discountEnabled !== false;
   const kitchenOn  = config?.sendToKitchenEnabled === true;
@@ -220,7 +268,17 @@ export default function Sales() {
     );
   }, [cart, discount, taxOn, defaultTaxRate, pricesInclTax, roundOn, roundMode, roundFactor]);
 
-  const { total_amount: total, taxable_amount: taxable, total_tax: tax, discount_amount: discountAmt, total_inc_tax: totalBeforeRound, round_off_amount: autoRoundOff, gross_face_total: sub } = totals;
+  const { 
+    total_amount: total, 
+    taxable_amount: taxable, 
+    total_tax: tax, 
+    discount_amount: discountAmt, 
+    total_inc_tax: totalBeforeRound, 
+    round_off_amount: autoRoundOff, 
+    gross_face_total: sub,
+    subtotal_base_ex_tax: subEx,
+    line_subtotal: grossInc
+  } = totals;
 
   const initiateOrder = (mode) => {
     if (!cart.length) { showToast('Cart is empty', 'error'); return; }
@@ -232,33 +290,47 @@ export default function Sales() {
   const placeOrder = async (mode = 'settle', method = 'cash', roundOff = 0) => {
     setSaving(true);
     try {
+      // Use the centralized calculation engine output for perfect UI ↔ Backend parity
+      const processedItems = totals.processed_items || [];
       const payload = {
-        orderNo: `SO-${Date.now().toString().slice(-8)}`,
+        orderNo: editingOrderNo || `SO-${Date.now().toString().slice(-8)}`,
         orderType: 'SALE',
-        orderStatus: mode === 'kitchen' ? 'KITCHEN' : 'CONFIRMED',
-        paymentStatus: mode === 'credit' ? 'CREDIT' : (mode === 'kitchen' ? 'PENDING' : 'PAID'),
+        orderStatus: mode === 'kitchen' ? 'KITCHEN' : 'COMPLETED',
+        paymentStatus: mode === 'credit' ? 'PAID' : (mode === 'kitchen' ? 'PENDING' : 'PAID'), // Simplified logic
         orderSource: 'OFFLINE', fulfillmentType: fulfillmentType || 'TAKEAWAY',
         tableNumber: tableNumber || null, orderDate: orderTime,
         customerId: selectedCustomers[0]?.id || null,
-        totalAmount: +totalBeforeRound.toFixed(2), totalTaxAmount: +tax.toFixed(2),
-        totalDiscountAmount: +discountAmt.toFixed(2),
-        grandTotal: +((mode === 'settle' || mode === 'credit') ? settledAmount : total).toFixed(2),
+        totalAmount: +totals.total_inc_tax.toFixed(2),
+        totalTaxAmount: +totals.total_tax.toFixed(2),
+        totalDiscountAmount: +totals.discount_amount.toFixed(2),
+        grandTotal: +((mode === 'settle' || mode === 'credit') ? settledAmount : totals.total_amount).toFixed(2),
         description: method !== 'none' ? `Payment: ${method}` : null,
-        lines: cart.map(c => {
-          const itemTax = parseFloat(c.tax) || 0;
+        lines: processedItems.map(pi => {
+          const cartItem = cart.find(c => c.pid === pi.pid || c.name === pi.item_name);
           return {
-            productId: c.pid, quantity: c.qty, unitPrice: c.price, unitOfMeasure: c.uom || 'units',
-            taxRate: itemTax, 
-            taxAmount: +(c.price * c.qty * itemTax / 100).toFixed(2), 
-            discountAmount: 0,
-            lineTotal: +(c.price * c.qty * (1 + itemTax / 100)).toFixed(2)
+            productId: cartItem?.pid || pi.pid || null,
+            quantity: pi.quantity,
+            unitPrice: pi.unit_price,
+            unitOfMeasure: cartItem?.uom || pi.unitOfMeasure || 'units',
+            taxRate: +pi.tax_rate.toFixed(2),
+            taxAmount: +pi.tax_amount.toFixed(2),
+            discountAmount: +pi.discount_amount.toFixed(2),
+            lineTotal: +pi.line_total.toFixed(2)
           };
         }),
       };
-      const r = await api.post('/api/v1/orders', payload);
+
+      let r;
+      if (editingOrderId) {
+        r = await api.put(`/api/v1/orders/${editingOrderId}`, payload);
+      } else {
+        r = await api.post('/api/v1/orders', payload);
+      }
+
       if (r.data.success) {
-        showToast(mode === 'kitchen' ? 'Sent to Kitchen!' : mode === 'credit' ? 'Credit Order Placed!' : 'Order Placed!');
-        clearCart(); setShowPaymentDialog(false);
+        showToast(editingOrderId ? 'Order Updated!' : (mode === 'kitchen' ? 'Sent to Kitchen!' : 'Order Placed!'));
+        newOrder(); 
+        setShowPaymentDialog(false);
       }
     } catch (e) {
       showToast(e.response?.data?.message || 'Failed', 'error');
@@ -330,7 +402,13 @@ export default function Sales() {
       setPhase('pos'); 
     }
   };
-  const newOrder = () => { clearCart(); setTableNumber(''); setPhase(tableOn ? 'table' : 'pos'); };
+  const newOrder = () => { 
+    clearCart(); 
+    setTableNumber(''); 
+    setEditingOrderId(null);
+    setEditingOrderNo(null);
+    setPhase(tableOn ? 'table' : 'pos'); 
+  };
 
   const toggleFS = () => {
     if (!document.fullscreenElement) {
@@ -378,6 +456,14 @@ export default function Sales() {
                     })()}
                   </div>
                   
+                  {editingOrderId && (
+                    <div className="hdr-edit-badge">
+                      <FaEdit className="eb-ic"/>
+                      <span className="mdl-hdr-sub">{editingOrderNo} • {editingOrderData?.fulfillmentType}</span>
+                      <button className="eb-x" onClick={newOrder}><FaTimes/></button>
+                    </div>
+                  )}
+
                   <div className="hdr-divider"/>
 
                   {customerOn && (
@@ -565,43 +651,73 @@ export default function Sales() {
                   </div>
                 </div>
                 <div className="cp-body">
-                  {cart.map(item => (
-                    <div key={item.pid} className="ci-card">
-                      {imagesOn && item.img && <div className="ci-img" style={{backgroundImage:`url(${item.img})`}}/>}
-                      <div className="ci-info">
-                        <div className="ci-nm">{item.name}</div>
-                        <div className="ci-pr-row">
-                          <div className="ci-pr">{sym}{(item.price*item.qty).toFixed(2)}</div>
-                          <div className="ci-qty">
-                            <button className="ci-q-btn" onClick={()=>updQty(item.pid,-1)}><FaMinus/></button>
-                            <span className="ci-q-val">{item.qty}</span>
-                            <button className="ci-q-btn" onClick={()=>updQty(item.pid,1)}><FaPlus/></button>
+                    {(totals.processed_items || cart).map(item => (
+                      <div key={item.pid} className="ci-card">
+                        {imagesOn && item.img && <div className="ci-img" style={{backgroundImage:`url(${item.img})`}}/>}
+                        <div className="ci-info">
+                          <div className="ci-nm">{item.name}</div>
+                          <div className="ci-pr-row">
+                            <div className="ci-pr">
+                              {item.lineDiscount > 0 ? (
+                                <>
+                                  <span style={{textDecoration: 'line-through', color: '#94a3b8', fontSize: '10.5px', marginRight: '6px', fontWeight: 600}}>
+                                    {sym}{(item.price * item.qty).toFixed(2)}
+                                  </span>
+                                  {sym}{(item.price * item.qty - item.lineDiscount).toFixed(2)}
+                                </>
+                              ) : (
+                                <>{sym}{(item.price * item.qty).toFixed(2)}</>
+                              )}
+                            </div>
+                            <div className="ci-qty">
+                              <button className="ci-q-btn" onClick={()=>updQty(item.pid,-1)}><FaMinus/></button>
+                              <span className="ci-q-val">{item.qty}</span>
+                              <button className="ci-q-btn" onClick={()=>updQty(item.pid,1)}><FaPlus/></button>
+                            </div>
                           </div>
+                          {taxOn && item.tax_amount > 0 && (
+                            <div style={{fontSize:'10px', color:'#64748b', marginTop:'4px', display:'flex', justifyContent:'space-between'}}>
+                              <span>{taxSplitOn ? `C/S ${taxLabel}` : taxLabel} ({item.tax_rate}%)</span>
+                              <span>{pricesInclTax ? '(incl.) ' : '+'}{sym}{item.tax_amount.toFixed(2)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
                 <div className="cp-ft">
                   <div className="cp-summary">
                     <div className="cp-row"><span>Sub Total</span><span>{sym}{sub.toFixed(2)}</span></div>
-                    {taxOn && (totals?.total_tax_included || 0) > 0.01 && <div className="cp-row"><span>{taxLabel} (incl)</span><span>{sym}{totals.total_tax_included.toFixed(2)}</span></div>}
-                    {taxOn && (totals?.total_tax_added || 0) > 0.01 && <div className="cp-row"><span>{taxLabel} (+)</span><span>{sym}{totals.total_tax_added.toFixed(2)}</span></div>}
-                    {taxOn && !(totals?.total_tax_added > 0) && !(totals?.total_tax_included > 0) && tax > 0.01 && <div className="cp-row"><span>{taxLabel}</span><span>{sym}{tax.toFixed(2)}</span></div>}
                     {discountOn && orderMode !== 'kitchen' && (
                       discountAmt > 0 ? (
-                        <div className="cp-row" style={{color:'#ef4444'}}>
-                          <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                            <span>Discount (-)</span>
-                            <button className="disc-edit-link" onClick={()=>{setDiscountTab('order');setShowDiscountModal(true);}}>Edit</button>
+                        <>
+                          <div className="cp-row" style={{color:'#ef4444'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                              <span>Discount (-)</span>
+                              <button className="disc-edit-link" onClick={()=>{setDiscountTab('order');setShowDiscountModal(true);}}>Edit</button>
+                            </div>
+                            <span>-{sym}{discountAmt.toFixed(2)}</span>
                           </div>
-                          <span>-{sym}{discountAmt.toFixed(2)}</span>
-                        </div>
+                          <div className="cp-row"><span>Discounted Total</span><span>{sym}{taxable.toFixed(2)}</span></div>
+                        </>
                       ) : (
-                        <div style={{}}>
+                        <div className="cp-row">
                           <button className="disc-add-link" onClick={()=>{setDiscountTab('order');setShowDiscountModal(true);}}>+ Add Discount</button>
                         </div>
                       )
+                    )}
+                    {taxOn && tax > 0.01 && !taxSplitOn && <div className="cp-row"><span>{taxLabel} Total</span><span>{sym}{tax.toFixed(2)}</span></div>}
+                    {taxOn && tax > 0.01 && taxSplitOn && (
+                      <>
+                        <div className="cp-row"><span>C{taxLabel} ({pricesInclTax ? 'incl' : '+'})</span><span>{sym}{(tax/2).toFixed(2)}</span></div>
+                        <div className="cp-row"><span>S{taxLabel} ({pricesInclTax ? 'incl' : '+'})</span><span>{sym}{(tax/2).toFixed(2)}</span></div>
+                      </>
+                    )}
+                    {roundOn && Math.abs(autoRoundOff) > 0.001 && (
+                      <div className="cp-row" style={{color: autoRoundOff > 0 ? '#16a34a' : '#ef4444', fontSize:'12px'}}>
+                        <span>Round Off</span>
+                        <span>{autoRoundOff > 0 ? '+' : ''}{sym}{autoRoundOff.toFixed(2)}</span>
+                      </div>
                     )}
                     <div className="cp-row tot"><span>Total</span><span>{sym}{total.toFixed(2)}</span></div>
                   </div>
@@ -704,21 +820,21 @@ export default function Sales() {
                               </div>
 
                               <div className="ov-actions" style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'6px', marginTop:'12px', borderTop:'1px solid #f1f5f9', paddingTop:'12px'}}>
-                                <button className="vm-pill micro lite edit" onClick={async () => {
-                                  const details = activeOrderDetails?.id === o.id ? activeOrderDetails : null;
-                                  if (!details) return;
-                                  setFulfillmentType(o.fulfillmentType);
-                                  setTableNumber(o.tableNumber || '');
-                                  setCart(details.lines?.map(l => ({ 
-                                    pid: l.productId, name: l.productName, price: l.unitPrice, 
-                                    qty: l.quantity, tax: l.taxRate, lineDiscount: 0,
-                                    uom: l.unitOfMeasure, is_packaged: l.isPackagedGood
-                                  })) || []);
-                                  setOpMode('pos');
-                                }}>Edit</button>
+                                <button className="vm-pill micro lite edit" onClick={() => loadOrderForEdit(o.id)}>Edit</button>
                                 
                                 <button className="vm-pill micro lite bill" onClick={async () => {
-                                  try { await api.post(`/api/v1/orders/${o.id}/print-bill`); showToast('Sent'); } catch (e) { showToast('Err', 'error'); }
+                                  try {
+                                    showToast('Preparing Bill...');
+                                    const { data: { data: fullOrder } } = await api.get(`/api/v1/orders/${o.id}`);
+                                    const { buildReceiptText } = await import('../../utils/printUtils');
+                                    const { printUniversal } = await import('../../utils/printGateway');
+                                    const text = buildReceiptText(fullOrder, null, config);
+                                    await printUniversal({ text, jobKind: 'bill' });
+                                    showToast('Sent to Printer');
+                                  } catch (e) {
+                                    console.error('Print Error:', e);
+                                    showToast('Print failed', 'error');
+                                  }
                                 }}>Print</button>
                                 
                                 <button className="vm-pill micro lite complete" style={{gridColumn:'span 2'}} onClick={async () => {
@@ -819,8 +935,23 @@ export default function Sales() {
                 columns={[
                   { 
                     key: 'orderNo', 
-                    label: 'Order No',
-                    render: (o) => <span style={{fontFamily:'monospace', fontWeight:800, color:themeColor}}>#{o.orderNo.slice(-8)}</span>
+                    label: 'Order #',
+                    render: (o) => (
+                      <div style={{display:'flex', flexDirection:'column'}}>
+                        <span style={{fontFamily:'monospace', fontWeight:800, color:themeColor, fontSize:'13px'}}>{o.orderNo}</span>
+                        <span style={{fontSize:'9px', fontWeight:700, color:'#94a3b8', textTransform:'uppercase'}}>{o.fulfillmentType}</span>
+                      </div>
+                    )
+                  },
+                  {
+                    key: 'invoiceNo',
+                    label: 'Invoice No',
+                    render: (o) => <span style={{fontWeight:700, color:'#475569'}}>{o.invoiceNo || '-'}</span>
+                  },
+                  {
+                    key: 'paymentNo',
+                    label: 'Payment No',
+                    render: (o) => <span style={{fontWeight:700, color:'#475569'}}>{o.paymentNo || '-'}</span>
                   },
                   { 
                     key: 'orderDate', 
@@ -833,22 +964,53 @@ export default function Sales() {
                     )
                   },
                   { 
-                    key: 'fulfillmentType', 
-                    label: 'Type',
-                    render: (o) => (
-                      <span style={{fontSize:'10px', fontWeight:800, textTransform:'uppercase', padding:'4px 8px', borderRadius:'6px', background:'#f1f5f9'}}>
-                        {o.fulfillmentType}
-                      </span>
-                    )
-                  },
-                  { 
                     key: 'grandTotal', 
                     label: 'Total', 
                     align: 'right',
-                    render: (o) => <span style={{fontWeight:900, color:'#0f172a'}}>{sym}{o.grandTotal.toFixed(2)}</span>
+                    render: (o) => <span style={{fontWeight:900, color:'#0f172a', fontSize:'14px'}}>{sym}{o.grandTotal.toFixed(2)}</span>
+                  },
+                  {
+                    key: 'actions',
+                    label: '',
+                    align: 'right',
+                    render: (o) => {
+                      const canManage = userRole?.includes('ADMIN') || userRole?.includes('MANAGER');
+                      return (
+                        <div style={{display:'flex', gap:'6px', justifyContent:'flex-end'}}>
+                          {canManage && (
+                            <>
+                              <button className="vm-pill micro lite edit" style={{padding:'6px 10px', fontSize:'9px'}} onClick={() => { console.log('Edit Clicked for ID:', o.id); loadOrderForEdit(o.id); }}>
+                                Edit
+                              </button>
+                              <button className="vm-pill micro lite cancel" style={{padding:'6px 10px', fontSize:'9px'}} onClick={async () => {
+                                if(!confirm('Are you sure you want to CANCEL this order? This will void the transaction.')) return;
+                                try {
+                                  await api.patch(`/api/v1/orders/${o.id}/status`, null, { params: { status: 'CANCELLED' } });
+                                  showToast('Order Cancelled');
+                                  fetchOrders();
+                                } catch (e) { showToast('Cancel Failed', 'error'); }
+                              }}>Cancel</button>
+                            </>
+                          )}
+                          <button className="vm-pill micro lite bill" style={{padding:'6px 10px', fontSize:'9px', minWidth:'50px'}} onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              showToast('Re-printing...');
+                              const { data: { data: fullOrder } } = await api.get(`/api/v1/orders/${o.id}`);
+                              const text = buildReceiptText(fullOrder, null, config);
+                              await printUniversal({ text, jobKind: 'bill', allowSystemDialog: true });
+                              showToast('Sent to Printer');
+                            } catch (err) { 
+                              console.error('Reprint Error:', err);
+                              showToast('Print Error', 'error'); 
+                            }
+                          }}>Print</button>
+                        </div>
+                      );
+                    }
                   }
                 ]}
-                data={allOrders.filter(o => o.orderStatus === 'COMPLETED')}
+                data={allOrders.filter(o => o.orderStatus === 'COMPLETED' || o.orderStatus === 'PAID')}
                 emptyTitle="No completed orders"
                 emptyText="Once orders are finalized, they will appear here in your history."
               />
@@ -921,6 +1083,21 @@ export default function Sales() {
               <button className="mdl-hdr-x" onClick={()=>setShowPaymentDialog(false)}><FaTimes/></button>
             </div>
             <div className="mdl-body">
+              <div style={{padding:'12px 20px', background:'#f8fafc', borderRadius:'10px', margin:'0 0 16px 0', display:'flex', flexDirection:'column', gap:'6px'}}>
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color:'#64748b'}}><span>Gross Total (Incl. Tax)</span><span>{sym}{grossInc.toFixed(2)}</span></div>
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color:'#64748b'}}><span>Subtotal (Ex-Tax)</span><span>{sym}{subEx.toFixed(2)}</span></div>
+                {discountAmt > 0 && <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color:'#ef4444'}}><span>Discount</span><span>-{sym}{discountAmt.toFixed(2)}</span></div>}
+                <div style={{height: '1px', background: '#e2e8f0', margin: '4px 0'}}></div>
+                <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color:'#64748b'}}><span>Taxable Value</span><span>{sym}{taxable.toFixed(2)}</span></div>
+                {taxOn && tax > 0.01 && !taxSplitOn && <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color:'#64748b'}}><span>{taxLabel} (+)</span><span>{sym}{tax.toFixed(2)}</span></div>}
+                {taxOn && tax > 0.01 && taxSplitOn && (
+                  <>
+                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color:'#64748b'}}><span>C{taxLabel} (+)</span><span>{sym}{(tax/2).toFixed(2)}</span></div>
+                    <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color:'#64748b'}}><span>S{taxLabel} (+)</span><span>{sym}{(tax/2).toFixed(2)}</span></div>
+                  </>
+                )}
+                {roundOn && Math.abs(autoRoundOff) > 0.001 && <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', color: autoRoundOff > 0 ? '#16a34a' : '#ef4444'}}><span>Round Off</span><span>{autoRoundOff > 0 ? '+' : ''}{sym}{autoRoundOff.toFixed(2)}</span></div>}
+              </div>
               <div className="mdl-settled"><span>Settled Total</span><b className="theme-text">{sym}{settledAmount.toFixed(2)}</b></div>
               {paymentMode!=='credit' && (
                 <div className="pay-grid">
@@ -1093,7 +1270,7 @@ export default function Sales() {
         .content-area { padding: 0 !important; }
         .dashboard-header { border-bottom: 1px solid #e2e8f0; }
         .mdl-ov{position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:vmFade .2s}
-        .mdl-box{background:#fff;border-radius:20px;width:100%;overflow:hidden;position:relative;animation:vmSlide .3s cubic-bezier(0.16,1,0.3,1);box-shadow:0 30px 60px rgba(0,0,0,0.12)}
+        .mdl-box{background:#fff;border-radius:20px;width:100%;overflow:hidden;position:relative;animation:vmSlide .3s cubic-bezier(0.16,1,0.3,1);box-shadow:0 30px 60px rgba(0,0,0,0.12); border:1px solid #e2e8f0; border-top:3px solid #f97316}
         .theme-bg{background:rgba(var(--rgb), 0.05) !important;color:var(--theme) !important}
         .theme-text{color:var(--theme)}
         .mdl-hdr{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f1f5f9}
@@ -1138,79 +1315,202 @@ export default function Sales() {
         .cust-ph{font-size:11px;color:#94a3b8}
         @keyframes vmFade{from{opacity:0}to{opacity:1}}
         @keyframes vmSlide{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+        .edit-modal-box{background:#fff;border-radius:32px;width:95%;max-width:900px;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 50px 100px rgba(0,0,0,0.25);animation:vmSlide .4s cubic-bezier(0.16,1,0.3,1)}
+        .em-hdr{padding:24px 30px;display:flex;align-items:center;justify-content:space-between;background:#fff;border-bottom:1px solid #f1f5f9}
+        .em-main{flex:1;overflow:hidden;display:flex;background:#f8fafc}
+        .em-list-panel{flex:1.4;padding:24px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;border-right:1px solid #f1f5f9}
+        .em-summary-panel{flex:1;padding:24px;background:#fff;overflow-y:auto;display:flex;flex-direction:column;gap:20px}
+        .em-search-wrap{position:relative;margin-bottom:8px}
+        .em-search{width:100%;padding:14px 16px 14px 44px;border:2px solid #e2e8f0;border-radius:16px;outline:none;font:600 14px inherit;background:#fff;transition:.2s}
+        .em-search:focus{border-color:var(--theme);box-shadow:0 0 0 4px rgba(var(--rgb),0.1)}
+        .em-s-ic{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:#94a3b8}
+        .em-sugg{position:absolute;top:100%;left:0;right:0;background:#fff;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.1);z-index:100;margin-top:8px;border:1px solid #e2e8f0;overflow:hidden}
+        .em-sugg-item{padding:12px 16px;display:flex;justify-content:space-between;cursor:pointer;transition:.2s}
+        .em-sugg-item:hover{background:#f8fafc}
+        .em-item{background:#fff;padding:16px;border-radius:20px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.02);border:1px solid #f1f5f9}
+        .em-item-nm{font-size:14px;font-weight:700;color:#0f172a}
+        .em-item-pr{font-size:12px;font-weight:800;color:#64748b}
+        .em-qty-ctrl{display:flex;align-items:center;gap:12px;background:#f1f5f9;padding:4px;border-radius:12px}
+        .em-qty-btn{width:28px;height:28px;border-radius:8px;border:none;background:#fff;color:#0f172a;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 2px 4px rgba(0,0,0,0.05)}
+        .em-qty-val{font-size:14px;font-weight:900;min-width:20px;text-align:center}
+        .em-del{width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#ef4444;background:#fef2f2;cursor:pointer;transition:.2s}
+        .em-del:hover{background:#fee2e2;transform:scale(1.05)}
+        .ctx-bk{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border:none;color:#64748b;cursor:pointer;transition:.2s}
+        .ctx-bk:hover{background:#e2e8f0;color:#0f172a;transform:rotate(90deg)}
       `}</style>
+
       <style jsx>{POS_CSS}</style>
       <style jsx>{SETUP_CSS}</style>
-      {showTableActions && selectedTable && (
-        <div className="mdl-ov" onClick={()=>setShowTableActions(false)} style={{background:'rgba(15, 23, 42, 0.08)', backdropFilter:'blur(8px)'}}>
-          <div className="mdl-box" onClick={e=>e.stopPropagation()} style={{maxWidth:290, borderRadius:32, overflow:'hidden', background:'#fff', boxShadow:'0 30px 60px -12px rgba(0,0,0,0.12)', border:'1px solid rgba(255,255,255,0.8)'}}>
-            <div style={{padding:'18px 24px', borderBottom:'1px solid #f1f5f9', display:'flex', justifyContent:'space-between', alignItems:'center', background:'#fff'}}>
+
+      {showEditModal && editingOrderData && (
+        <div style={{position:'fixed', inset:0, zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center', backdropFilter:'blur(12px)', background:'rgba(15, 23, 42, 0.15)'}}>
+          <div className="edit-modal-box">
+            <div className="em-hdr">
               <div>
-                <div style={{fontSize:'16px', fontWeight:900, color:'#0f172a'}}>Table {selectedTable.tableNumber}</div>
-                <div style={{fontSize:'10px', color:'#94a3b8', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.04em'}}>{selectedTable.section}</div>
+                <div style={{fontSize:'12px', fontWeight:800, color: 'var(--theme)', textTransform:'uppercase', letterSpacing:'0.06em'}}>Order Management</div>
+                <div style={{fontSize:'20px', fontWeight:900, color:'#0f172a'}}>Review Order {editingOrderNo}</div>
               </div>
-              <button onClick={()=>setShowTableActions(false)} style={{border:'none', background:'#f8fafc', color:'#94a3b8', width:'28px', height:'28px', borderRadius:'50%', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'12px'}} className="h-scale"><FaTimes/></button>
+              <button className="ctx-bk" onClick={() => setShowEditModal(false)}><FaTimes/></button>
             </div>
             
-            <div className="mdl-body" style={{padding:'20px', display:'flex', flexDirection:'column', gap:'12px'}}>
-              {(() => {
-                const activeOrder = allOrders.find(o => o.tableNumber === selectedTable.tableNumber && o.orderStatus !== 'COMPLETED' && o.orderStatus !== 'CANCELLED');
-                if (!activeOrder) return <div style={{textAlign:'center', padding:'30px 10px', color:'#94a3b8', fontSize:'12px', fontWeight:700}}>Empty Table</div>;
-                
-                return (
-                  <>
-                    <div style={{maxHeight:'110px', overflowY:'auto', display:'flex', flexDirection:'column', gap:'4px', padding:'0 4px'}}>
-                      {detailsLoading ? (
-                        <div style={{textAlign:'center', padding:'10px', fontSize:'11px', color:'#94a3b8'}}>Syncing...</div>
-                      ) : activeOrderDetails?.lines?.map((l, i) => (
-                        <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                          <span style={{fontSize:'10.5px', fontWeight:600, color:'#475569', letterSpacing:'0.01em'}}>{l.productName} <span style={{color:'var(--theme)', fontWeight:700}}>x{l.quantity}</span></span>
-                          <span style={{fontSize:'10.5px', fontWeight:700, color:'#1e293b'}}>{sym}{(l.unitPrice * l.quantity).toFixed(0)}</span>
+            <div className="em-main">
+              <div className="em-list-panel">
+                <div className="em-search-wrap">
+                  <FaSearch className="em-s-ic"/>
+                  <input className="em-search" placeholder="Add items to this order..." 
+                    value={search} onChange={e => setSearch(e.target.value)}/>
+                  {search && (
+                    <div className="em-sugg">
+                      {products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 5).map(p => (
+                        <div key={p.id} className="em-sugg-item" onClick={() => {
+                          const ex = editingOrderData?.lines?.find(l => l.pid === p.id);
+                          if (ex) {
+                            setEditingOrderData(prev => ({
+                              ...prev,
+                              lines: prev.lines.map(l => l.pid === p.id ? { ...l, qty: l.qty + 1 } : l)
+                            }));
+                          } else {
+                            setEditingOrderData(prev => ({
+                              ...prev,
+                              lines: [{ 
+                                pid: p.id, name: p.name, price: p.price, qty: 1, 
+                                tax: p.taxRate || defaultTaxRate, uom: p.uomName || 'units' 
+                              }, ...(editingOrderData?.lines || [])]
+                            }));
+                          }
+                          setSearch('');
+                        }}>
+                          <span style={{fontWeight:700, fontSize:'13px'}}>{p.name}</span>
+                          <span style={{fontWeight:800, color:'var(--theme)'}}>{sym}{p.price}</span>
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
 
-                    <div style={{padding:'10px 0 0', borderTop:'1px solid #f1f5f9', display:'flex', flexDirection:'column', gap:'3px'}}>
-                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px', fontWeight:500, color:'#94a3b8', letterSpacing:'0.02em'}}>
-                        <span>Subtotal</span>
-                        <span>{sym}{(activeOrder.grandTotal / 1.05).toFixed(0)}</span>
-                      </div>
-                      {activeOrder.totalTax > 0 && (
-                        <div style={{display:'flex', justifyContent:'space-between', fontSize:'10px', fontWeight:500, color:'#94a3b8', letterSpacing:'0.02em'}}>
-                          <span>Tax</span>
-                          <span>{sym}{activeOrder.totalTax.toFixed(0)}</span>
-                        </div>
-                      )}
-                      <div style={{display:'flex', justifyContent:'space-between', fontSize:'14px', fontWeight:700, color:'#1e293b', marginTop:'4px', letterSpacing:'-0.01em'}}>
-                        <span style={{fontWeight:500, color:'#64748b'}}>Total</span>
-                        <span style={{color:'var(--theme)', fontWeight:800}}>{sym}{activeOrder.grandTotal.toFixed(0)}</span>
-                      </div>
+                {editingOrderData?.lines?.map((l, idx) => (
+                  <div key={idx} className="em-item">
+                    <div className="em-item-info">
+                      <div className="em-item-nm">{l.name}</div>
+                      <div className="em-item-pr">{sym}{l.price.toFixed(2)}</div>
                     </div>
-
-                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginTop:'6px'}}>
-                      <button className="vm-pill micro lite edit" onClick={() => {
-                        setFulfillmentType('DINE_IN'); setTableNumber(selectedTable.tableNumber);
-                        setCart(activeOrderDetails?.lines?.map(l => ({ pid: l.productId, name: l.productName, price: l.unitPrice, qty: l.quantity, tax: l.taxRate, lineDiscount: 0 })) || []);
-                        setOpMode('pos'); setShowTableActions(false);
-                      }}>Edit</button>
-
-                      <button className="vm-pill micro lite bill" onClick={async () => {
-                        try { await api.post(`/api/v1/orders/${activeOrder.id}/print-bill`); showToast('Sent'); } catch (e) { showToast('Err', 'error'); }
-                      }}>Print Bill</button>
-
-                      <button className="vm-pill micro lite complete" style={{gridColumn:'span 2'}} onClick={async () => {
-                        if(!confirm('Complete?')) return;
-                        try { await api.put(`/api/v1/orders/${activeOrder.id}/status`, { status: 'COMPLETED' }); showToast('Done'); fetchOrders(); setShowTableActions(false); } catch (e) { showToast('Err', 'error'); }
-                      }}>Complete Transaction</button>
-
-                      <button className="vm-pill micro lite cancel" style={{gridColumn:'span 2'}} onClick={async () => {
-                        if(!confirm('Cancel?')) return;
-                        try { await api.put(`/api/v1/orders/${activeOrder.id}/status`, { status: 'CANCELLED' }); showToast('Cancelled'); fetchOrders(); setShowTableActions(false); } catch (e) { showToast('Err', 'error'); }
-                      }}>Cancel Order</button>
+                    <div className="em-qty-ctrl">
+                      <button className="em-qty-btn" onClick={() => {
+                         setEditingOrderData(prev => ({
+                           ...prev,
+                           lines: prev.lines.map((li, i) => i === idx ? { ...li, qty: Math.max(1, li.qty - 1) } : li)
+                         }));
+                      }}><FaMinus/></button>
+                      <span className="em-qty-val">{l.qty}</span>
+                      <button className="em-qty-btn" onClick={() => {
+                         setEditingOrderData(prev => ({
+                           ...prev,
+                           lines: prev.lines.map((li, i) => i === idx ? { ...li, qty: li.qty + 1 } : li)
+                         }));
+                      }}><FaPlus/></button>
                     </div>
-                  </>
-                );
-              })()}
+                    <div className="em-del" onClick={() => {
+                      setEditingOrderData(prev => ({
+                        ...prev,
+                        lines: prev.lines.filter((_, i) => i !== idx)
+                      }));
+                    }}><FaTrash/></div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="em-summary-panel">
+                <div style={{flex:1}}>
+                  <div style={{marginBottom:'20px'}}>
+                    <div style={{fontSize:'11px', fontWeight:800, color:'#94a3b8', marginBottom:'8px', textTransform:'uppercase'}}>Fulfillment</div>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px'}}>
+                      {FULFILLMENT.map(f => (
+                        <button key={f.key} 
+                          onClick={() => setEditingOrderData(p => ({ ...p, fulfillmentType: f.key }))}
+                          style={{
+                            padding:'10px', borderRadius:'14px', border:'1px solid #f1f5f9',
+                            background: editingOrderData?.fulfillmentType === f.key ? f.color + '10' : '#fff',
+                            color: editingOrderData?.fulfillmentType === f.key ? f.color : '#64748b',
+                            display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', transition:'0.2s',
+                            fontSize:'11px', fontWeight:800
+                          }}
+                        >
+                          {f.icon} {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{background:'#f8fafc', padding:'20px', borderRadius:'24px', display:'flex', flexDirection:'column', gap:'12px'}}>
+                    {(() => {
+                      const mTotals = calculateOrderTotals(
+                        (editingOrderData?.lines || []).map(l => ({ ...l, quantity: l.qty, tax_rate: l.tax })),
+                        discount,
+                        { gst_enabled: taxOn, default_tax_rate: defaultTaxRate, prices_include_tax: pricesInclTax }
+                      );
+                      return (
+                        <>
+                          <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', fontWeight:600, color:'#64748b'}}>
+                            <span>Subtotal</span>
+                            <span>{sym}{mTotals.gross_face_total.toFixed(2)}</span>
+                          </div>
+                          <div style={{display:'flex', justifyContent:'space-between', fontSize:'12px', fontWeight:600, color:'#64748b'}}>
+                            <span>Tax</span>
+                            <span>{sym}{mTotals.total_tax.toFixed(2)}</span>
+                          </div>
+                          <div style={{height:'1px', background:'#e2e8f0', margin:'4px 0'}}/>
+                          <div style={{display:'flex', justifyContent:'space-between', fontSize:'18px', fontWeight:900, color:'#0f172a'}}>
+                            <span>Total</span>
+                            <span style={{color:'var(--theme)'}}>{sym}{mTotals.total_amount.toFixed(0)}</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <button className="vm-pill" style={{width:'100%', padding:'18px', borderRadius:'20px', background:'var(--theme)', color:'#fff', border:'none', fontSize:'14px', fontWeight:900, boxShadow:'0 10px 25px var(--theme-glow)', cursor:'pointer'}} 
+                  onClick={async () => {
+                    setSaving(true);
+                    try {
+                      const mTotals = calculateOrderTotals(
+                        editingOrderData.lines.map(l => ({ ...l, quantity: l.qty, tax_rate: l.tax })),
+                        discount,
+                        { gst_enabled: taxOn, default_tax_rate: defaultTaxRate, prices_include_tax: pricesInclTax }
+                      );
+                      const payload = {
+                        ...editingOrderData,
+                        totalAmount: +mTotals.total_inc_tax.toFixed(2),
+                        totalTaxAmount: +mTotals.total_tax.toFixed(2),
+                        grandTotal: +mTotals.total_amount.toFixed(2),
+                        lines: editingOrderData.lines.map(l => ({
+                          productId: l.pid, quantity: l.qty, unitPrice: l.price,
+                          unitOfMeasure: l.uom, taxRate: l.tax,
+                          taxAmount: +((l.price * l.qty * l.tax) / 100).toFixed(2),
+                          lineTotal: +((l.price * l.qty) * (1 + l.tax/100)).toFixed(2)
+                        }))
+                      };
+                      await api.put(`/api/v1/orders/${editingOrderData.id}`, payload);
+                      
+                      // Differential Print Logic
+                      try {
+                        const { buildReceiptText } = await import('../../utils/printUtils');
+                        const { printUniversal } = await import('../../utils/printGateway');
+                        const printPayload = { ...payload, originalLines: editingOrderData.originalLines };
+                        const text = buildReceiptText(printPayload, null, config);
+                        await printUniversal({ text, jobKind: 'receipt' });
+                      } catch (err) { console.error('Differential Print Failed', err); }
+
+                      showToast('Order Updated Successfully!');
+                      setShowEditModal(false);
+                      fetchOrders();
+                    } catch (e) { showToast('Update failed', 'error'); }
+                    finally { setSaving(false); }
+                }}>
+                  {saving ? 'Saving...' : 'Update Order'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1229,8 +1529,48 @@ export default function Sales() {
         .vm-pill:hover{ filter:brightness(0.97); transform:scale(1.02); }
         .vm-pill:active{ transform:scale(0.98); }
         .h-scale:hover{ transform:rotate(90deg) scale(1.1); background:#fef2f2 !important; }
-      `}</style>
 
+        .edit-modal-box {
+          width: 90%;
+          max-width: 900px;
+          height: 80vh;
+          background: #fff;
+          border-radius: 32px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 40px 100px -20px rgba(0,0,0,0.25);
+        }
+        .em-hdr { padding: 24px 32px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; background: #fff; }
+        .em-main { flex: 1; display: grid; grid-template-columns: 1fr 340px; overflow: hidden; }
+        .em-list-panel { padding: 24px 32px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; background: #f8fafc; }
+        .em-summary-panel { padding: 24px; border-left: 1px solid #f1f5f9; background: #fff; display: flex; flex-direction: column; }
+        
+        .em-item { 
+          background: #fff; padding: 16px; border-radius: 20px; display: flex; align-items: center; gap: 16px;
+          box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03); border: 1px solid #f1f5f9;
+        }
+        .em-item-info { flex: 1; }
+        .em-item-nm { font-size: 14px; font-weight: 800; color: #0f172a; }
+        .em-item-pr { font-size: 12px; color: #64748b; font-weight: 600; margin-top: 2px; }
+        .em-qty-ctrl { display: flex; align-items: center; gap: 12px; background: #f8fafc; padding: 4px; border-radius: 12px; }
+        .em-qty-btn { width: 28px; height: 28px; border: none; background: #fff; border-radius: 8px; color: #0f172a; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .em-qty-val { font-size: 14px; font-weight: 900; min-width: 20px; text-align: center; }
+        .em-del { color: #ef4444; cursor: pointer; padding: 8px; opacity: 0.5; transition: 0.2s; }
+        .em-del:hover { opacity: 1; transform: scale(1.1); }
+        
+        .em-search-wrap { margin-bottom: 8px; position: relative; }
+        .em-search { width: 100%; padding: 12px 16px 12px 40px; border-radius: 16px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 13px; font-weight: 600; outline: none; transition: 0.2s; }
+        .em-search:focus { background: #fff; border-color: var(--theme); box-shadow: 0 0 0 4px var(--theme-glow); }
+        .em-s-ic { position: absolute; left: 16px; top: 14px; color: #94a3b8; font-size: 14px; }
+        
+        .em-sugg { position: absolute; top: calc(100% + 8px); left: 0; right: 0; background: #fff; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #f1f5f9; z-index: 10; max-height: 200px; overflow-y: auto; }
+        .em-sugg-item { padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: 0.2s; }
+        .em-sugg-item:hover { background: #f8fafc; color: var(--theme); }
+        
+        .em-ft { padding: 24px; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 12px; }
+      `}</style>
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
     </DashboardLayout>
   );
 }
@@ -1252,6 +1592,12 @@ const POS_CSS = `
 .pos-hdr-controls{display:flex;align-items:center;min-width:0;overflow:hidden}
 .hdr-context-group{display:flex;align-items:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:2px;gap:2px}
 .hdr-divider{width:1px;height:24px;background:#e2e8f0;margin:0 4px}
+.hdr-edit-badge{display:flex;align-items:center;gap:8px;background:#fff7ed;border:1px solid #ffedd5;padding:4px 10px;border-radius:12px;margin-left:8px;animation:ebIn .3s ease}
+@keyframes ebIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+.eb-ic{color:#f97316;font-size:12px}
+.eb-tx{font-size:11px;font-weight:900;color:#9a3412;letter-spacing:0.02em}
+.eb-x{border:none;background:#ffedd5;color:#f97316;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:10px;transition:.2s}
+.eb-x:hover{background:#fdba74;color:#fff}
 .pos-modes{display:flex;gap:4px;padding:2px}
 .hdr-cust-zone{display:flex;align-items:center;gap:6px;padding-right:4px;position:relative;min-width:0;overflow:hidden}
 .cust-chips{display:flex;gap:6px;align-items:center}
@@ -1418,7 +1764,7 @@ const POS_CSS = `
 
 .vm-overlay{position:fixed;inset:0;background:rgba(15,23,42,0.4);backdrop-filter:blur(10px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;animation:vmo .3s ease}
 @keyframes vmo{from{opacity:0}to{opacity:1}}
-.vm-modal{background:#ffffff;border-radius:28px;width:100%;max-width:820px;height:82vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,0.2);font-family:'Plus Jakarta Sans',sans-serif;animation:vms .4s cubic-bezier(0.16,1,0.3,1)}
+.vm-modal{background:#ffffff;border-radius:28px;width:100%;max-width:820px;height:82vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,0.2);font-family:'Plus Jakarta Sans',sans-serif;animation:vms .4s cubic-bezier(0.16,1,0.3,1); border: 1px solid #e2e8f0; border-top: 3px solid #f97316;}
 @keyframes vms{from{transform:translateY(20px) scale(0.95);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}
 .vm-body{flex:1;overflow:hidden;display:flex;flex-direction:column;background:#f8fafc}
 .vm-top-strip{padding:16px 20px;display:flex;justify-content:space-between;align-items:center;background:#fff;border-bottom:1px solid #f1f5f9}

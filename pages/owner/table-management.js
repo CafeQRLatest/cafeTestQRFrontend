@@ -761,7 +761,7 @@ function TableContent() {
         .modal-ov{position:fixed;inset:0;background:rgba(15,23,42,.4);backdrop-filter:blur(8px);z-index:2000;
           display:flex;align-items:center;justify-content:center;padding:20px}
         .modal-card{background:white;border-radius:32px;max-width:560px;width:100%;overflow:hidden;
-          box-shadow:0 24px 64px rgba(0,0,0,.12);animation:tm-mi .4s cubic-bezier(.2,1,.2,1)}
+          box-shadow:0 24px 64px rgba(0,0,0,.12);animation:tm-mi .4s cubic-bezier(.2,1,.2,1); border: 1px solid #e2e8f0; border-top: 3px solid #f97316;}
         @keyframes tm-mi{from{opacity:0;transform:scale(.95) translateY(20px)}to{opacity:1;transform:none}}
         .modal-hd{display:flex;justify-content:space-between;align-items:center;padding:24px 32px;border-bottom:1px solid #f1f5f9}
         .modal-hd h3{margin:0;font-size:18px;font-weight:900;color:#0f172a;display:flex;align-items:center;gap:12px}

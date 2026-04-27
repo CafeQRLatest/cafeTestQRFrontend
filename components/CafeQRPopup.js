@@ -78,6 +78,8 @@ export default function CafeQRPopup({
           max-height: 90vh;
           overflow: hidden;
           box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+          border: 1px solid #e2e8f0;
+          border-top: 3px solid #f97316;
         }
 
         .cafeqr-popup-header {
