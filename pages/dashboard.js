@@ -41,7 +41,7 @@ export default function DashboardPage() {
 }
 
 function DashboardOverview() {
-  const { token, logout, subscriptionExpiryDate } = useAuth();
+  const { logout, subscriptionExpiryDate } = useAuth();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [stats, setStats] = useState({ liveOrders: 0, revenueToday: 0, avgTicket: 0, outOfStock: 0 });
@@ -74,10 +74,8 @@ function DashboardOverview() {
 
   const fetchDashboardData = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/orders`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const result = await res.json();
+      const res = await api.get('/api/v1/orders');
+      const result = res.data;
       
       if (result.success && result.data) {
         setOrders(result.data.slice(0, 5));
