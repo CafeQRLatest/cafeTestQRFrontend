@@ -94,6 +94,12 @@ export const AuthProvider = ({ children }) => {
     
     // Metadata cookies (Non-HttpOnly) for frontend logic
     const cookieOptions = { expires: 7, secure: true, sameSite: 'strict', path: '/' };
+    
+    // Store access token for cross-domain Authorization header
+    // HttpOnly cookies don't work cross-domain (vercel.app -> onrender.com)
+    if (data.accessToken) Cookies.set('access_token', data.accessToken, cookieOptions);
+    if (data.refreshToken) Cookies.set('refresh_token', data.refreshToken, cookieOptions);
+    
     if (role) Cookies.set('userRole', role, cookieOptions);
     if (userEmail) Cookies.set('userEmail', userEmail, cookieOptions);
     if (data.firstName) Cookies.set('firstName', data.firstName, cookieOptions);
@@ -132,6 +138,8 @@ export const AuthProvider = ({ children }) => {
     
     // Clear cookies with explicit path
     const removeOptions = { path: '/' };
+    Cookies.remove('access_token', removeOptions);
+    Cookies.remove('refresh_token', removeOptions);
     Cookies.remove('userRole', removeOptions);
     Cookies.remove('userEmail', removeOptions);
     Cookies.remove('firstName', removeOptions);

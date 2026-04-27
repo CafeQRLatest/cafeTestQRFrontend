@@ -6,13 +6,16 @@ const api = axios.create({
   withCredentials: true, 
 });
 
-// Request interceptor: Attach context meta-data headers
+// Request interceptor: Attach context meta-data headers and Bearer token
 api.interceptors.request.use(
   (config) => {
-    // Read context from cookies (synced in AuthContext)
-    const clientId = Cookies.get('orgId'); // Wait, the backend calls it X-Client-ID but AuthContext stores it as orgId? No, AuthContext has clientId.
-    // Let me check AuthContext stores: orgId, clientId, userId, etc.
+    // Attach JWT access token as Authorization header (cross-domain safe)
+    const accessToken = Cookies.get('access_token');
+    if (accessToken) {
+      config.headers['Authorization'] = `Bearer ${accessToken}`;
+    }
     
+    // Read context from cookies (synced in AuthContext)
     config.headers['X-Client-ID'] = Cookies.get('clientId') || '0';
     config.headers['X-Org-ID'] = Cookies.get('orgId') || '0';
     config.headers['X-Terminal-ID'] = Cookies.get('terminalId') || '0';
@@ -88,18 +91,27 @@ api.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      // Attempt to refresh the token using the HttpOnly refresh_token cookie
-      await axios.post(
+      // Attempt to refresh the token using the stored refresh_token
+      const refreshToken = Cookies.get('refresh_token');
+      const refreshResponse = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/refresh`,
         {},
-        { withCredentials: true }
+        { 
+          withCredentials: true,
+          headers: refreshToken ? { 'Authorization': `Bearer ${refreshToken}` } : {}
+        }
       );
 
-      // Success: new access_token and refresh_token cookies are now set by the backend
-      processQueue(null);
+      // Store the new tokens from the response
+      if (refreshResponse.data?.data?.accessToken) {
+        Cookies.set('access_token', refreshResponse.data.data.accessToken, { expires: 7, secure: true, sameSite: 'strict', path: '/' });
+      }
+      if (refreshResponse.data?.data?.refreshToken) {
+        Cookies.set('refresh_token', refreshResponse.data.data.refreshToken, { expires: 7, secure: true, sameSite: 'strict', path: '/' });
+      }
 
-      // Small delay to ensure browser has processed the new Set-Cookie headers
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Success: process queued requests
+      processQueue(null);
 
       return api(originalRequest);
     } catch (refreshError) {
