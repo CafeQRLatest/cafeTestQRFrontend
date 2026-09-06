@@ -765,7 +765,8 @@ const MENU_CONFIG = {
   "Document Sequences": { name: "Document Sequences", icon: <FaFileInvoice /> },
   "Data Backup": { name: "Data Backup", icon: <FaDatabase /> },
   "Partners": { name: "Partners", icon: <FaUserFriends /> },
-  "Payment Types": { name: "Payment Types", icon: <FaCreditCard />, url: "/owner/payment-types" }
+  "Payment Types": { name: "Payment Types", icon: <FaCreditCard />, url: "/owner/payment-types" },
+  "Payroll & HR": { name: "Payroll & HR", icon: <FaIdBadge />, url: "/owner/hr/employees" }
 };
 
 const CATEGORY_MAPPING = {
@@ -800,7 +801,8 @@ const CATEGORY_MAPPING = {
   "Configurations": "ACCOUNT",
   "Partners": "ACCOUNT",
   "Data Backup": "ACCOUNT",
-  "Document Sequences": "ACCOUNT"
+  "Document Sequences": "ACCOUNT",
+  "Payroll & HR": "OPERATIONS"
 };
 
 const MENU_ORDER = [
@@ -808,7 +810,7 @@ const MENU_ORDER = [
   "Purchase Orders", "Stock", "QR Availability", "Delivery Hours", "Credit Customers", "Credit Sales", "Offline Sync Center", "Waste Management",
   "Customers", "Loyalty",
   "Analytics", "Sales_Insight", "Expenses", "Reports & Billing", "Billing & Reports", "Accounting",
-  "Organization", "Partners", "Subscription", "Configurations", "Document Sequences", "Data Backup"
+  "Organization", "Partners", "Subscription", "Configurations", "Document Sequences", "Data Backup", "Payroll & HR"
 ];
 
 // ─── INTERNAL COMPONENTS ────────────────────────────────────────────────────────
@@ -865,6 +867,13 @@ function Sidebar({ collapsed, menus = [], config, onToggle }) {
       return indexA - indexB;
     });
   });
+
+  if (userRole === 'OWNER' || userRole === 'SUPER_ADMIN' || userRole === 'ROLE_SUPER_ADMIN') {
+    // Statically inject Payroll for Owners so it doesn't require backend permission seeding during dev
+    if (!groupedMenus["OPERATIONS"].some(m => m.name === "Payroll & HR")) {
+      groupedMenus["OPERATIONS"].push({ name: "Payroll & HR", url: "/owner/hr/employees" });
+    }
+  }
 
   const STATIC_ACCOUNT_LINKS = [];
 
@@ -1040,7 +1049,8 @@ function MobileSidebar({ onNavigate, menus = [], config }) {
     "Document Sequences": { name: "Document Sequences", icon: <FaFileInvoice /> },
     "Data Backup": { name: "Data Backup", icon: <FaDatabase /> },
     "Partners": { name: "Partners", icon: <FaUserFriends /> },
-    "Payment Types": { name: "Payment Types", icon: <FaCreditCard />, url: "/owner/payment-types" }
+    "Payment Types": { name: "Payment Types", icon: <FaCreditCard />, url: "/owner/payment-types" },
+    "Payroll & HR": { name: "Payroll & HR", icon: <FaIdBadge />, url: "/owner/hr/employees" }
   };
 
   const categoryMapping = {
@@ -1075,7 +1085,8 @@ function MobileSidebar({ onNavigate, menus = [], config }) {
     "Configurations": "ACCOUNT",
     "Partners": "ACCOUNT",
     "Data Backup": "ACCOUNT",
-    "Document Sequences": "ACCOUNT"
+    "Document Sequences": "ACCOUNT",
+    "Payroll & HR": "OPERATIONS"
   };
 
   const menuOrder = [
@@ -1083,7 +1094,7 @@ function MobileSidebar({ onNavigate, menus = [], config }) {
     "Purchase Orders", "Stock", "QR Availability", "Delivery Hours", "Credit Customers", "Credit Sales", "Offline Sync Center", "Waste Management",
     "Customers", "Loyalty",
     "Analytics", "Sales_Insight", "Expenses", "Reports & Billing", "Billing & Reports", "Accounting",
-    "Organization", "Partners", "Subscription", "Configurations", "Document Sequences", "Data Backup"
+    "Organization", "Partners", "Subscription", "Configurations", "Document Sequences", "Data Backup", "Payroll & HR"
   ];
 
   const hasPointOfSale = menus.some(m => m.name === "Point of Sale");
@@ -1129,6 +1140,12 @@ function MobileSidebar({ onNavigate, menus = [], config }) {
       return indexA - indexB;
     });
   });
+
+  if (userRole === 'OWNER' || userRole === 'SUPER_ADMIN' || userRole === 'ROLE_SUPER_ADMIN') {
+    if (!groupedMenus["OPERATIONS"].some(m => m.name === "Payroll & HR")) {
+      groupedMenus["OPERATIONS"].push({ name: "Payroll & HR", url: "/owner/hr/employees" });
+    }
+  }
 
   const STATIC_ACCOUNT_LINKS = [];
 
