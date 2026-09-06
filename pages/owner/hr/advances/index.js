@@ -194,7 +194,13 @@ export default function SalaryAdvances() {
         .modal-content h3 { margin: 0 0 24px; font-size: 20px; }
         
         .form-group label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: #475569; }
-        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #cbd5e1; outline: none; }
+        .form-group input, .form-group select, .form-group textarea { 
+          width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #cbd5e1; 
+          outline: none; color: #1e293b; background: #f8fafc; font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+          border-color: #f97316; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); background: #fff;
+        }
       `}</style>
     </DashboardLayout>
   );
