@@ -119,7 +119,7 @@ export default function DesignationModal({ isOpen, onClose, designations, onRefr
         .create-form { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
         .create-form input {
           flex: 1; min-width: 150px; padding: 12px 16px; border-radius: 12px; border: 1px solid #cbd5e1;
-          outline: none; font-size: 14px; background: #f8fafc; transition: all 0.2s;
+          outline: none; font-size: 14px; color: #1e293b; background: #f8fafc; transition: all 0.2s;
         }
         .create-form input:focus { border-color: #f97316; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); }
         .btn-primary {
