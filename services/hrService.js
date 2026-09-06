@@ -68,5 +68,40 @@ export const hrService = {
 
   syncToAccounting: async (runId) => {
     return await api.post(`/api/v1/hr/payroll-accounting/sync/${runId}`);
+  },
+
+  // ---- Leaves ----
+  getAllLeaveRequests: async () => {
+    return await api.get('/api/v1/hr/leaves');
+  },
+  
+  createLeaveRequest: async (data) => {
+    return await api.post('/api/v1/hr/leaves', data);
+  },
+
+  updateLeaveStatus: async (id, status) => {
+    return await api.put(`/api/v1/hr/leaves/${id}/status?status=${status}`);
+  },
+
+  // ---- Salary Advances ----
+  getAllAdvances: async () => {
+    return await api.get('/api/v1/hr/advances');
+  },
+
+  createAdvance: async (data) => {
+    return await api.post('/api/v1/hr/advances', data);
+  },
+
+  updateAdvanceStatus: async (id, status) => {
+    return await api.put(`/api/v1/hr/advances/${id}/status?status=${status}`);
+  },
+
+  // ---- Salary Components ----
+  getAllComponents: async () => {
+    return await api.get('/api/v1/hr/salary-components');
+  },
+
+  createComponent: async (data) => {
+    return await api.post('/api/v1/hr/salary-components', data);
   }
 };

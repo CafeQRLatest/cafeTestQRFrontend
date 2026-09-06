@@ -3,6 +3,8 @@ import Head from 'next/head';
 import DashboardLayout from '../../../../components/DashboardLayout';
 import { hrService } from '../../../../services/hrService';
 import EmployeeCreationModal from '../../../../components/hr/EmployeeCreationModal';
+import DepartmentModal from '../../../../components/hr/DepartmentModal';
+import DesignationModal from '../../../../components/hr/DesignationModal';
 import { FaPlus, FaSearch, FaUserTie, FaEdit, FaTrash } from 'react-icons/fa';
 
 export default function EmployeeMaster() {
@@ -12,6 +14,9 @@ export default function EmployeeMaster() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [isDesigModalOpen, setIsDesigModalOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -71,9 +76,17 @@ export default function EmployeeMaster() {
             />
           </div>
           
-          <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
-            <FaPlus /> Add Employee
-          </button>
+          <div className="action-buttons-group" style={{ display: 'flex', gap: '12px' }}>
+            <button className="btn-secondary" onClick={() => setIsDeptModalOpen(true)}>
+              Departments
+            </button>
+            <button className="btn-secondary" onClick={() => setIsDesigModalOpen(true)}>
+              Designations
+            </button>
+            <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
+              <FaPlus /> Add Employee
+            </button>
+          </div>
         </div>
 
         {/* Stats Row */}
@@ -176,6 +189,20 @@ export default function EmployeeMaster() {
         designations={designations}
       />
 
+      <DepartmentModal 
+        isOpen={isDeptModalOpen}
+        onClose={() => setIsDeptModalOpen(false)}
+        departments={departments}
+        onRefresh={fetchData}
+      />
+
+      <DesignationModal 
+        isOpen={isDesigModalOpen}
+        onClose={() => setIsDesigModalOpen(false)}
+        designations={designations}
+        onRefresh={fetchData}
+      />
+
       <style jsx>{`
         .hr-dashboard {
           display: flex; flex-direction: column; gap: 24px;
@@ -208,6 +235,13 @@ export default function EmployeeMaster() {
           background: white; outline: none; transition: all 0.2s;
         }
         .search-box input:focus { border-color: #f97316; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1); }
+
+        .btn-secondary {
+          padding: 12px 20px; border-radius: 12px; border: 1px solid #cbd5e1;
+          background: white; color: #475569; font-weight: 700; cursor: pointer;
+          transition: background 0.2s;
+        }
+        .btn-secondary:hover { background: #f1f5f9; }
 
         .btn-primary {
           padding: 12px 24px; border-radius: 12px; border: none;

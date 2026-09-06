@@ -13,7 +13,9 @@ export default function EmployeeCreationModal({ isOpen, onClose, onSave, departm
     baseSalary: '',
     hourlyRate: '',
     bankAccountNumber: '',
-    bankRoutingNumber: ''
+    bankRoutingNumber: '',
+    taxId: '',
+    nationalId: ''
   });
 
   if (!isOpen) return null;
@@ -24,7 +26,13 @@ export default function EmployeeCreationModal({ isOpen, onClose, onSave, departm
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(formData);
+    
+    // Clean up empty strings to null for UUID fields so backend doesn't crash
+    const payload = { ...formData };
+    if (!payload.departmentId) payload.departmentId = null;
+    if (!payload.designationId) payload.designationId = null;
+    
+    onSave(payload);
   };
 
   return (
@@ -98,6 +106,16 @@ export default function EmployeeCreationModal({ isOpen, onClose, onSave, departm
             <div className="form-group">
               <label>Bank Routing Number</label>
               <input type="text" name="bankRoutingNumber" value={formData.bankRoutingNumber} onChange={handleChange} />
+            </div>
+
+            <div className="form-group">
+              <label>Tax ID (e.g. SSN / PAN)</label>
+              <input type="text" name="taxId" value={formData.taxId} onChange={handleChange} />
+            </div>
+            
+            <div className="form-group">
+              <label>National ID / Passport</label>
+              <input type="text" name="nationalId" value={formData.nationalId} onChange={handleChange} />
             </div>
           </div>
           
