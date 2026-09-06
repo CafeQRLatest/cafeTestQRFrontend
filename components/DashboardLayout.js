@@ -8,7 +8,8 @@ import {
   FaExpand, FaCompress, FaSignOutAlt, FaBell, FaArrowLeft, FaUserCog, FaChevronDown, FaChevronRight, FaBuilding, FaDesktop, FaCrown, FaBalanceScale, FaTable,
   FaHome, FaBars, FaBookOpen, FaUtensils, FaCashRegister, FaBoxes, FaClock, FaIndustry, FaTruck, FaIdBadge,
   FaCheckCircle, FaExclamationCircle, FaSave, FaCalculator, FaChartBar, FaFileInvoice, FaPlus, FaTimes,
-  FaCamera, FaReceipt, FaTags, FaFilter, FaUsers, FaCog, FaChartLine, FaCreditCard, FaUserFriends, FaShoppingCart, FaChair, FaRecycle, FaDatabase, FaMoneyCheckAlt
+  FaCamera, FaReceipt, FaTags, FaFilter, FaUsers, FaCog, FaChartLine, FaCreditCard, FaUserFriends, FaShoppingCart, FaChair, FaRecycle, FaDatabase, FaMoneyCheckAlt,
+  FaCalendarAlt, FaMoneyBillWave, FaCogs
 } from 'react-icons/fa';
 import SyncStatusBar from './SyncStatusBar';
 import BranchSwitcher from './BranchSwitcher';
@@ -766,9 +767,12 @@ const MENU_CONFIG = {
   "Data Backup": { name: "Data Backup", icon: <FaDatabase /> },
   "Partners": { name: "Partners", icon: <FaUserFriends /> },
   "Payment Types": { name: "Payment Types", icon: <FaCreditCard />, url: "/owner/payment-types" },
-  "Payroll & HR": { name: "Payroll & HR", icon: <FaIdBadge />, url: "/owner/hr/employees" },
+  "Payroll & HR": { name: "Employees", icon: <FaIdBadge />, url: "/owner/hr/employees" },
   "Timesheets": { name: "Timesheets", icon: <FaClock />, url: "/owner/hr/timesheets" },
-  "Payroll Processing": { name: "Payroll Processing", icon: <FaMoneyCheckAlt />, url: "/owner/hr/payroll" }
+  "Leaves": { name: "Leave Approvals", icon: <FaCalendarAlt />, url: "/owner/hr/leaves" },
+  "Advances": { name: "Salary Advances", icon: <FaMoneyBillWave />, url: "/owner/hr/advances" },
+  "Salary Components": { name: "Salary Rules", icon: <FaCogs />, url: "/owner/hr/components" },
+  "Payroll Processing": { name: "Run Payroll", icon: <FaMoneyCheckAlt />, url: "/owner/hr/payroll" }
 };
 
 const CATEGORY_MAPPING = {
@@ -806,6 +810,9 @@ const CATEGORY_MAPPING = {
   "Document Sequences": "ACCOUNT",
   "Payroll & HR": "OPERATIONS",
   "Timesheets": "OPERATIONS",
+  "Leaves": "OPERATIONS",
+  "Advances": "OPERATIONS",
+  "Salary Components": "OPERATIONS",
   "Payroll Processing": "OPERATIONS"
 };
 
@@ -814,7 +821,8 @@ const MENU_ORDER = [
   "Purchase Orders", "Stock", "QR Availability", "Delivery Hours", "Credit Customers", "Credit Sales", "Offline Sync Center", "Waste Management",
   "Customers", "Loyalty",
   "Analytics", "Sales_Insight", "Expenses", "Reports & Billing", "Billing & Reports", "Accounting",
-  "Organization", "Partners", "Subscription", "Configurations", "Document Sequences", "Data Backup", "Payroll & HR", "Timesheets", "Payroll Processing"
+  "Organization", "Partners", "Subscription", "Configurations", "Document Sequences", "Data Backup", 
+  "Payroll & HR", "Timesheets", "Leaves", "Advances", "Salary Components", "Payroll Processing"
 ];
 
 // ─── INTERNAL COMPONENTS ────────────────────────────────────────────────────────
@@ -879,6 +887,18 @@ function Sidebar({ collapsed, menus = [], config, onToggle }) {
     }
     if (!groupedMenus["OPERATIONS"].some(m => m.name === "Timesheets")) {
       groupedMenus["OPERATIONS"].push({ name: "Timesheets", url: "/owner/hr/timesheets" });
+    }
+    if (!groupedMenus["OPERATIONS"].some(m => m.name === "Leaves")) {
+      groupedMenus["OPERATIONS"].push({ name: "Leaves", url: "/owner/hr/leaves" });
+    }
+    if (!groupedMenus["OPERATIONS"].some(m => m.name === "Advances")) {
+      groupedMenus["OPERATIONS"].push({ name: "Advances", url: "/owner/hr/advances" });
+    }
+    if (!groupedMenus["OPERATIONS"].some(m => m.name === "Salary Components")) {
+      groupedMenus["OPERATIONS"].push({ name: "Salary Components", url: "/owner/hr/components" });
+    }
+    if (!groupedMenus["OPERATIONS"].some(m => m.name === "Payroll Processing")) {
+      groupedMenus["OPERATIONS"].push({ name: "Payroll Processing", url: "/owner/hr/payroll" });
     }
   }
 

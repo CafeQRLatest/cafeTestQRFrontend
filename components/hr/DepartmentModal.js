@@ -99,7 +99,8 @@ export default function DepartmentModal({ isOpen, onClose, departments, onRefres
           border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
         }
         .modal-container {
-          width: 100%; max-width: 500px; border-radius: 24px; overflow: hidden;
+          width: 95%; max-width: 600px; border-radius: 24px; overflow: hidden;
+          margin: 20px;
           animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .modal-header {
@@ -115,17 +116,19 @@ export default function DepartmentModal({ isOpen, onClose, departments, onRefres
         
         .modal-body { padding: 24px; }
         
-        .create-form { display: flex; gap: 8px; margin-bottom: 24px; }
+        .create-form { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
         .create-form input {
-          flex: 1; padding: 10px 14px; border-radius: 10px; border: 1px solid #cbd5e1;
-          outline: none; font-size: 14px;
+          flex: 1; min-width: 150px; padding: 12px 16px; border-radius: 12px; border: 1px solid #cbd5e1;
+          outline: none; font-size: 14px; background: #f8fafc; transition: all 0.2s;
         }
-        .create-form input:focus { border-color: #3b82f6; }
+        .create-form input:focus { border-color: #f97316; box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.1); }
         .btn-primary {
-          padding: 10px 16px; border-radius: 10px; border: none; background: #3b82f6;
-          color: white; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;
+          padding: 12px 20px; border-radius: 12px; border: none; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+          color: white; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+          min-width: 100px; transition: transform 0.2s;
         }
-        .btn-primary:disabled { opacity: 0.7; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
 
         .list-container { max-height: 300px; overflow-y: auto; }
         .item-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
