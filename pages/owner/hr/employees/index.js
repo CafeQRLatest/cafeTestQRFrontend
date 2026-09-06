@@ -51,6 +51,28 @@ export default function EmployeeMaster() {
     }
   };
 
+  const handleToggleStatus = async (emp) => {
+    try {
+      await hrService.updateEmployee(emp.id, {
+        ...emp,
+        isActive: !emp.isActive
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Failed to update status:', error);
+    }
+  };
+
+  const handleDeleteEmployee = async (id) => {
+    if (!confirm("Are you sure you want to delete this employee?")) return;
+    try {
+      await hrService.deleteEmployee(id);
+      fetchData();
+    } catch (error) {
+      console.error('Failed to delete employee:', error);
+    }
+  };
+
   const filteredEmployees = employees.filter(e => 
     (e.firstName + ' ' + e.lastName).toLowerCase().includes(searchQuery.toLowerCase()) ||
     (e.email || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -162,14 +184,19 @@ export default function EmployeeMaster() {
                           : `$${emp.baseSalary}/mo`}
                       </td>
                       <td>
-                        <span className={`badge status-${emp.isActive ? 'active' : 'inactive'}`}>
+                        <span 
+                          className={`badge status-${emp.isActive ? 'active' : 'inactive'} cursor-pointer`}
+                          onClick={() => handleToggleStatus(emp)}
+                          title="Click to toggle Active / Inactive status"
+                          style={{ cursor: 'pointer' }}
+                        >
                           {emp.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
                       <td>
                         <div className="action-buttons">
-                          <button className="icon-btn edit"><FaEdit /></button>
-                          <button className="icon-btn delete"><FaTrash /></button>
+                          <button className="icon-btn edit" onClick={() => handleToggleStatus(emp)} title="Toggle Status"><FaEdit /></button>
+                          <button className="icon-btn delete" onClick={() => handleDeleteEmployee(emp.id)} title="Delete Employee"><FaTrash /></button>
                         </div>
                       </td>
                     </tr>
@@ -232,7 +259,7 @@ export default function EmployeeMaster() {
         .search-box input {
           width: 100%; padding: 12px 16px 12px 42px;
           border-radius: 12px; border: 1px solid #e2e8f0;
-          background: white; outline: none; transition: all 0.2s;
+          background: white; color: #1e293b; outline: none; transition: all 0.2s;
         }
         .search-box input:focus { border-color: #f97316; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1); }
 

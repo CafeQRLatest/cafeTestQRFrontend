@@ -202,11 +202,11 @@ export default function PayrollDashboard() {
         .text-emerald { color: #10b981; }
 
         .run-form { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
-        .form-group { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 200px; }
-        .form-group label { font-size: 13px; font-weight: 700; color: #475569; }
-        .form-group input {
-          padding: 12px 16px; border-radius: 12px; border: 1px solid #cbd5e1;
-          background: white; font-size: 14px; outline: none; transition: all 0.2s;
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #475569; font-size: 13px; }
+        .form-group input { 
+          padding: 12px; border-radius: 12px; border: 1px solid #cbd5e1; 
+          font-size: 14px; background: #f8fafc; color: #1e293b; outline: none; transition: all 0.2s; 
+          width: 100%; min-width: 150px;
         }
         .form-group input:focus { border-color: #f97316; box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1); }
 

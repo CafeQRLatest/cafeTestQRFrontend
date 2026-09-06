@@ -28,7 +28,7 @@ export default function EmployeeCreationModal({ isOpen, onClose, onSave, departm
     e.preventDefault();
     
     // Clean up empty strings to null for UUID fields so backend doesn't crash
-    const payload = { ...formData };
+    const payload = { ...formData, isActive: true };
     if (!payload.departmentId) payload.departmentId = null;
     if (!payload.designationId) payload.designationId = null;
     
@@ -139,8 +139,9 @@ export default function EmployeeCreationModal({ isOpen, onClose, onSave, departm
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
         }
         .modal-container {
-          width: 100%; max-width: 600px; border-radius: 24px;
-          overflow: hidden; display: flex; flex-direction: column;
+          width: 95%; max-width: 600px; border-radius: 24px;
+          margin: 20px; max-height: 90vh; overflow-y: auto;
+          display: flex; flex-direction: column;
           animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .modal-header {
@@ -158,7 +159,7 @@ export default function EmployeeCreationModal({ isOpen, onClose, onSave, departm
         .close-btn:hover { background: #fee2e2; color: #ef4444; transform: rotate(90deg); }
         
         .modal-body { padding: 32px; }
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
         
         .form-group { display: flex; flex-direction: column; gap: 8px; }
         .form-group label { font-size: 13px; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 6px; }
@@ -166,7 +167,7 @@ export default function EmployeeCreationModal({ isOpen, onClose, onSave, departm
         
         input, select {
           padding: 12px 16px; border-radius: 12px; border: 1px solid #cbd5e1;
-          background: #f8fafc; font-size: 14px; color: #1e293b;
+          background: #f8fafc; font-size: 14px; color: #1e293b; width: 100%;
           transition: all 0.2s; outline: none;
         }
         input:focus, select:focus {
